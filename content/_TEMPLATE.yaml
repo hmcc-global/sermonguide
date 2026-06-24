@@ -46,7 +46,8 @@ discussion_questions:
 
 
 # --- NEXT STEPS ------------------------------------------------------------
-next_steps_intro: "Optional sentence introducing the next steps."
+# Just the bullet points. No intro paragraph or sub-heading — the page shows
+# the "Next Steps" heading followed straight by these items.
 next_steps:
   - "First practical step to take this week."
   - "Second step (add or remove lines as needed)."

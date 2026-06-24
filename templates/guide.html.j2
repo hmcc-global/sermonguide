@@ -35,7 +35,7 @@
     {% if recap %}
     <section class="block col recap">
       <p class="eyebrow">Sermon Recap</p>
-      <h2>The Message</h2>
+      {% if legacy_layout %}<h2>The Message</h2>{% endif %}
       {% for p in recap %}<p>{{ p }}</p>{% endfor %}
       {% if one_thing %}<p class="one-thing"><strong>One Thing:</strong> {{ one_thing }}</p>{% endif %}
     </section>

@@ -172,7 +172,6 @@ discussion_questions:
   Committing:
     - "What is one way you can choose worship over worry this week?"
 
-next_steps_intro: "Pick one to put into practice before we gather again."
 next_steps:
   - "Write down three things God has already been faithful in, and thank Him."
   - "Share one current 'waiting' with your group so they can pray with you."

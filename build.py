@@ -158,6 +158,12 @@ def load_guide(path: Path) -> dict:
     data["slug"] = path.stem
     data.setdefault("footer_brand", FOOTER_BRAND)
 
+    # Guides authored before the layout refresh use an explicit `order:` field
+    # and carry no `date:`. They keep the old "The Message" recap heading (and
+    # any next_steps_intro/title they already have). Newer guides are created
+    # from the template, which uses `date:`, so they get the streamlined layout.
+    data.setdefault("legacy_layout", "date" not in data)
+
     # Resolve scripture from the ESV API (by reference) when possible, otherwise
     # keep whatever text is already in the YAML.
     reference = data.get("scripture_ref") or data.get("scripture_title")
