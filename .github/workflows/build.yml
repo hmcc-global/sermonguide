@@ -41,6 +41,11 @@ jobs:
 
       - name: Build the site (rebuilds every guide in content/)
         run: python build.py
+        env:
+          # Optional: lets CI fetch passages from the ESV API on a cache miss.
+          # Without it, the build reads committed content/.cache and falls back
+          # to scripture_passage in the YAML.
+          ESV_API_KEY: ${{ secrets.ESV_API_KEY }}
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6

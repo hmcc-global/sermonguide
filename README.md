@@ -49,7 +49,8 @@ part: "Part 9: Titus 2"         # subtitle under the headline
 date: "2026-06-22"              # optional; orders the index (newest first)
 
 scripture_title: "Titus 2"
-scripture_passage:              # list of paragraphs
+scripture_ref: "Titus 2"        # optional; ESV reference to fetch (see below)
+scripture_passage:              # list of paragraphs (fallback if not fetched)
   - "^2 Older men are to be..."  # ^N renders as a small verse number
 
 recap:                          # list of paragraphs
@@ -70,6 +71,26 @@ next_steps:
 
 Only `series` is strictly required; every other section is omitted gracefully if
 left out.
+
+## Scripture from the ESV API (optional)
+
+Instead of pasting the passage into `scripture_passage`, you can let the build
+fetch it from the [ESV API](https://api.esv.org) by reference.
+
+1. Register for a free API key at <https://api.esv.org> (non-commercial use).
+2. Set it in your environment: `export ESV_API_KEY=...`
+3. Give the guide a reference. The build uses `scripture_ref` if present,
+   otherwise falls back to `scripture_title`. So for many guides where the title
+   *is* a valid reference (e.g. `Luke 1:26-55`), nothing else is needed.
+4. Build. Fetched passages are written to `content/.cache/` (committed to the
+   repo) so later builds — and CI, which has no key — read from the cache
+   instead of the network. Delete a cache file to force a refresh.
+
+If no key is set and there's no cache hit, the build falls back to whatever text
+is already in `scripture_passage`, so existing guides keep working untouched.
+
+> The ESV API requires the copyright notice that the template already renders
+> beneath each passage. Keep it.
 
 ## Customizing the look
 
