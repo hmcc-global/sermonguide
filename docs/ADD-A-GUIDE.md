@@ -37,7 +37,6 @@ There are two ways to do it. **The form is the easiest** — start there.
    - A question about what to do this week?
 
    ## Next Steps
-   Optional intro sentence.
    - First step.
    - Second step.
    ```

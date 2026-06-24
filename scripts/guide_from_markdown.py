@@ -30,7 +30,6 @@ The expected markdown:
     - Question two?
 
     ## Next Steps
-    Optional intro paragraph.
     - First step.
     - Second step.
 
@@ -43,6 +42,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -83,16 +83,6 @@ def list_items(block: str) -> list[str]:
         if m and m.group(1).strip():
             items.append(m.group(1).strip())
     return items
-
-
-def lead_paragraphs(block: str) -> list[str]:
-    """Text that appears before the first bullet in a block."""
-    lines = []
-    for line in block.splitlines():
-        if re.match(r"\s*[-*]\s+", line):
-            break
-        lines.append(line)
-    return paragraphs("\n".join(lines))
 
 
 def sections(body: str) -> dict[str, str]:
@@ -176,8 +166,10 @@ def parse(markdown: str) -> dict:
     guide: dict = {"series": series}
     if part:
         guide["part"] = part
-    if header_field("date"):
-        guide["date"] = header_field("date")
+    # Always emit a date. build.py derives its `legacy_layout` flag from the
+    # presence of `date:` — guides without one render the old layout — so a
+    # form guide must carry a date. Default to today when none was given.
+    guide["date"] = header_field("date") or date.today().isoformat()
 
     scripture = header_field("scripture")
     scripture_ref = header_field("scripture ref") or header_field("scripture reference")
@@ -196,10 +188,7 @@ def parse(markdown: str) -> dict:
         guide["discussion_questions"] = dq
 
     if "next steps" in secs:
-        intro = lead_paragraphs(secs["next steps"])
         steps = list_items(secs["next steps"])
-        if intro:
-            guide["next_steps_intro"] = " ".join(intro)
         if steps:
             guide["next_steps"] = steps
 
