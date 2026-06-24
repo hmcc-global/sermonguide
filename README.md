@@ -67,9 +67,7 @@ discussion_questions:           # rendered as a grid, in the order listed
   Confessing:
     - "Question two?"
 
-next_steps_intro: "Optional intro paragraph."
-next_steps_title: "Part 9: Titus 2"   # optional sub-label
-next_steps:
+next_steps:                     # just the bullet points, no intro or sub-label
   - "Do this."
 ```
 
