@@ -123,6 +123,19 @@ def subsections(block: str) -> dict[str, list[str]]:
     return {k: v for k, v in result.items() if v}
 
 
+# The four HMCC discussion-question categories, in their intended flow:
+# connect, examine the text, let it convict, then act. Authors may paste them
+# in any order; we normalize to this sequence. Unknown categories are kept and
+# appended in the order they were written.
+CATEGORY_ORDER = ["Connecting", "Considering", "Confessing", "Committing"]
+
+
+def order_categories(dq: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Sort discussion-question categories into the canonical HMCC order."""
+    rank = {name.lower(): i for i, name in enumerate(CATEGORY_ORDER)}
+    return dict(sorted(dq.items(), key=lambda kv: rank.get(kv[0].lower(), len(rank))))
+
+
 def unwrap_issue_form(body: str) -> str:
     """Strip the GitHub issue-form wrapper around the pasted guide, if present.
 
@@ -189,7 +202,7 @@ def parse(markdown: str) -> dict:
 
     dq = subsections(secs.get("discussion questions", ""))
     if dq:
-        guide["discussion_questions"] = dq
+        guide["discussion_questions"] = order_categories(dq)
 
     if "next steps" in secs:
         steps = list_items(secs["next steps"])
