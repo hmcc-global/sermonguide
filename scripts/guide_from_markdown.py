@@ -178,6 +178,10 @@ def parse(markdown: str) -> dict:
     if scripture_ref and scripture_ref != scripture:
         guide["scripture_ref"] = scripture_ref
 
+    preacher = header_field("preacher")
+    if preacher:
+        guide["preacher"] = preacher
+
     if "recap" in secs:
         guide["recap"] = paragraphs(secs["recap"])
     if secs.get("one thing"):
