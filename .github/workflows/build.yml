@@ -31,6 +31,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          # Always build the latest main tip. Matters when this workflow is
+          # called right after another job pushed a commit (e.g. new-guide),
+          # since the default checkout would use the older triggering SHA.
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v6
