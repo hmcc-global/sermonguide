@@ -1,0 +1,52 @@
+# =============================================================================
+# SERMON GUIDE TEMPLATE
+#
+# Copy this file to a new name to create a guide. The FILENAME becomes the page
+# URL, so use lowercase words and hyphens — e.g. "adore-5.yaml" -> "adore-5.html".
+#
+# This file is named with a leading underscore (_TEMPLATE.yaml), so the build
+# IGNORES it. Your copy must NOT start with an underscore.
+#
+# Lines starting with # are comments/instructions — delete them or leave them,
+# the build ignores them either way. Keep the quotes around text.
+# =============================================================================
+
+series: "ADORE"                       # Big headline at the top of the page.
+part: "Part 5: Worship With Joy"      # Subtitle under the headline.
+date: "2026-06-22"                    # Date of the sermon (YYYY-MM-DD).
+                                      # Newest dates show first on the home page.
+
+# --- SCRIPTURE -------------------------------------------------------------
+# Just put the Bible reference here. The build fetches the actual ESV text
+# automatically — you do NOT paste the verses yourself.
+# Examples of valid references: "John 3:16"  "Titus 2"  "Luke 1:26-55"
+scripture_title: "Luke 1:46-55"
+
+
+# --- SERMON RECAP ----------------------------------------------------------
+# One or more paragraphs summarizing the message. Each "- " is a paragraph.
+recap:
+  - "Write the first paragraph of the recap here. Summarize the main point of
+     the sermon in a few sentences."
+  - "Write a second paragraph here if you need one. Add as many '- ' paragraphs
+     as you like, or delete this one."
+
+one_thing: "The single biggest takeaway, in one sentence."
+
+
+# --- DISCUSSION QUESTIONS --------------------------------------------------
+# Group questions under headings. Add/rename/remove headings as needed.
+discussion_questions:
+  Connecting:
+    - "An opening question to get people talking?"
+  Confessing:
+    - "A question about where this challenges us?"
+  Committing:
+    - "A question about what to do this week?"
+
+
+# --- NEXT STEPS ------------------------------------------------------------
+next_steps_intro: "Optional sentence introducing the next steps."
+next_steps:
+  - "First practical step to take this week."
+  - "Second step (add or remove lines as needed)."
