@@ -28,6 +28,7 @@
       <p class="eyebrow">Scripture</p>
       {% if scripture_title %}<h2>{{ scripture_title }}</h2>{% endif %}
       {% for p in scripture_passage %}<p>{{ p | verses }}</p>{% endfor %}
+      <p class="scripture-credit">Scripture quotations are from the ESV&reg; Bible (The Holy Bible, English Standard Version&reg;), &copy; 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved.</p>
     </section>
     {% endif %}
 

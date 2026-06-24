@@ -13,9 +13,14 @@ Output lands in output/ (one <slug>.html per guide, plus index.html).
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import shutil
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +34,7 @@ TEMPLATE_DIR = ROOT / "templates"
 STATIC_DIR = ROOT / "static"
 STATIC_CSS = STATIC_DIR / "styles.css"
 OUTPUT_DIR = ROOT / "output"
+CACHE_DIR = CONTENT_DIR / ".cache"
 
 # Asset files copied verbatim into output/ and referenced by the pages.
 ASSETS = ["hmcc-logo.svg", "favicon.png", "apple-touch-icon.png"]
@@ -36,7 +42,26 @@ ASSETS = ["hmcc-logo.svg", "favicon.png", "apple-touch-icon.png"]
 SITE_TITLE = "Sermon Guides"
 FOOTER_BRAND = "HMCC"
 
+# ESV API (https://api.esv.org). Set ESV_API_KEY to fetch passages by reference;
+# without it we fall back to text already in the YAML.
+ESV_API_KEY = os.environ.get("ESV_API_KEY", "").strip()
+ESV_TEXT_URL = "https://api.esv.org/v3/passage/text/"
+ESV_PARAMS = {
+    "include-passage-references": "false",
+    "include-verse-numbers": "true",
+    "include-first-verse-numbers": "true",
+    "include-footnotes": "false",
+    "include-headings": "false",
+    "include-short-copyright": "false",
+    "include-passage-horizontal-lines": "false",
+    "include-heading-horizontal-lines": "false",
+    "indent-poetry": "false",
+    "line-length": "0",
+}
+
 _VERSE_RE = re.compile(r"\^(\d+)")
+# ESV returns verse markers as "[26]"; rewrite to our own "^26" convention.
+_ESV_VERSE_RE = re.compile(r"\[(\d+)\]\s*")
 
 
 def verses(text: str) -> Markup:
@@ -61,11 +86,85 @@ def make_env() -> Environment:
     return env
 
 
+def _cache_path(reference: str) -> Path:
+    """Stable, filesystem-safe cache filename for a passage reference."""
+    safe = re.sub(r"[^A-Za-z0-9]+", "-", reference).strip("-").lower()
+    return CACHE_DIR / f"{safe}.json"
+
+
+def _parse_esv(passage: str) -> list[str]:
+    """Split ESV plain text into paragraphs and convert verse markers."""
+    paragraphs = []
+    for chunk in re.split(r"\n\s*\n", passage.strip()):
+        # Collapse intra-paragraph newlines; HTML would collapse them anyway.
+        text = re.sub(r"\s*\n\s*", " ", chunk.strip())
+        text = _ESV_VERSE_RE.sub(r"^\1 ", text).strip()
+        if text:
+            paragraphs.append(text)
+    return paragraphs
+
+
+def fetch_passage(reference: str) -> list[str] | None:
+    """Return the ESV passage for a reference, using a disk cache.
+
+    Reads from content/.cache first (so builds work offline and without a key
+    once warmed). On a miss, fetches from the ESV API when ESV_API_KEY is set
+    and writes the result back to the cache. Returns None if it cannot resolve
+    the passage, letting the caller fall back to YAML text.
+    """
+    cache_file = _cache_path(reference)
+    if cache_file.exists():
+        try:
+            return json.loads(cache_file.read_text(encoding="utf-8"))["passages"]
+        except (ValueError, KeyError):
+            pass  # corrupt cache entry — refetch below
+
+    if not ESV_API_KEY:
+        return None
+
+    query = urllib.parse.urlencode({**ESV_PARAMS, "q": reference})
+    request = urllib.request.Request(
+        f"{ESV_TEXT_URL}?{query}",
+        headers={"Authorization": f"Token {ESV_API_KEY}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, ValueError) as exc:
+        print(f"  warning: ESV fetch failed for {reference!r}: {exc}")
+        return None
+
+    passages = _parse_esv("\n\n".join(payload.get("passages", [])))
+    if not passages:
+        print(f"  warning: ESV returned no text for {reference!r}")
+        return None
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
+        json.dumps(
+            {"reference": payload.get("canonical", reference), "passages": passages},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    print(f"  fetched ESV passage {payload.get('canonical', reference)!r}")
+    return passages
+
+
 def load_guide(path: Path) -> dict:
     with path.open(encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     data["slug"] = path.stem
     data.setdefault("footer_brand", FOOTER_BRAND)
+
+    # Resolve scripture from the ESV API (by reference) when possible, otherwise
+    # keep whatever text is already in the YAML.
+    reference = data.get("scripture_ref") or data.get("scripture_title")
+    if reference:
+        fetched = fetch_passage(reference)
+        if fetched:
+            data["scripture_passage"] = fetched
     return data
 
 
