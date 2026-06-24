@@ -75,6 +75,20 @@ def verses(text: str) -> Markup:
     return Markup(marked)
 
 
+def humandate(value: str) -> str:
+    """Render an ISO date (YYYY-MM-DD) as e.g. "Dec 21, 2025".
+
+    Non-ISO or empty values are returned unchanged so the template stays safe.
+    """
+    if not value:
+        return ""
+    try:
+        dt = datetime.strptime(str(value).strip(), "%Y-%m-%d")
+    except ValueError:
+        return str(value)
+    return dt.strftime("%b %-d, %Y")
+
+
 def make_env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATE_DIR)),
@@ -83,6 +97,7 @@ def make_env() -> Environment:
         lstrip_blocks=True,
     )
     env.filters["verses"] = verses
+    env.filters["humandate"] = humandate
     return env
 
 

@@ -20,16 +20,21 @@
   <main class="wrap">
     <section class="index-hero">
       <h1>{{ site_title }}</h1>
-      <div class="tag">Weekly guides for personal study &amp; small groups</div>
+      <div class="tag">Weekly guides for personal study &amp; Life Groups</div>
     </section>
 
     <ul class="guide-list">
       {% for g in guides %}
       <li>
         <a href="{{ g.slug }}.html">
-          <span class="g-series">{{ g.series }}</span>
-          <span class="g-part">{{ g.part }}</span>
-          {% if g.date %}<span class="g-date">{{ g.date }}</span>{% endif %}
+          <span class="g-date">{% if g.date %}{{ g.date | humandate }}{% endif %}</span>
+          <span class="g-body">
+            <span class="g-head">
+              <span class="g-series">{{ g.series }}</span>
+              {% if g.scripture_title %}<span class="g-scripture">{{ g.scripture_title }}</span>{% endif %}
+            </span>
+            <span class="g-part">{{ g.part }}</span>
+          </span>
         </a>
       </li>
       {% endfor %}
