@@ -54,7 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue comment "${{ github.event.issue.number }}" --body \
+          gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body \
           "⚠️ I couldn't read that guide:
 
           \`\`\`
@@ -101,8 +101,8 @@ jobs:
         run: |
           owner="${REPO%%/*}"; name="${REPO##*/}"
           url="https://${owner}.github.io/${name}/${SLUG}.html"
-          gh issue comment "$NUM" --body "✅ Published! Your guide is live at:
+          gh issue comment "$NUM" --repo "$REPO" --body "✅ Published! Your guide is live at:
           $url
 
           (If the link 404s, give it another minute for the deploy to finish.)"
-          gh issue close "$NUM"
+          gh issue close "$NUM" --repo "$REPO"
