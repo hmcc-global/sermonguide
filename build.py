@@ -16,10 +16,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -29,9 +31,13 @@ from markupsafe import Markup, escape
 ROOT = Path(__file__).resolve().parent
 CONTENT_DIR = ROOT / "content"
 TEMPLATE_DIR = ROOT / "templates"
-STATIC_CSS = ROOT / "static" / "styles.css"
+STATIC_DIR = ROOT / "static"
+STATIC_CSS = STATIC_DIR / "styles.css"
 OUTPUT_DIR = ROOT / "output"
 CACHE_DIR = CONTENT_DIR / ".cache"
+
+# Asset files copied verbatim into output/ and referenced by the pages.
+ASSETS = ["hmcc-logo.svg", "favicon.png", "apple-touch-icon.png"]
 
 SITE_TITLE = "Sermon Guides"
 FOOTER_BRAND = "HMCC"
@@ -173,6 +179,10 @@ def build(paths: list[Path]) -> None:
     index_tpl = env.get_template("index.html.j2")
 
     OUTPUT_DIR.mkdir(exist_ok=True)
+    for name in ASSETS:                       # copy logo/favicon next to the pages
+        src = STATIC_DIR / name
+        if src.exists():
+            shutil.copy2(src, OUTPUT_DIR / name)
 
     # Always load EVERY guide so the index and prev/next links stay complete,
     # even when only a subset of pages is being (re)written.
@@ -193,13 +203,14 @@ def build(paths: list[Path]) -> None:
     for guide in guides:
         if guide["slug"] not in write_slugs:
             continue
-        html = guide_tpl.render(css=css, **guide)
+        html = guide_tpl.render(css=css, year=datetime.now().year, **guide)
         out = OUTPUT_DIR / f"{guide['slug']}.html"
         out.write_text(html, encoding="utf-8")
         print(f"  built  {out.relative_to(ROOT)}")
 
     index_html = index_tpl.render(
         css=css,
+        year=datetime.now().year,
         site_title=SITE_TITLE,
         footer_brand=FOOTER_BRAND,
         guides=guides,
