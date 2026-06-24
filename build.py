@@ -80,8 +80,10 @@ def build(paths: list[Path]) -> None:
     all_paths = sorted(CONTENT_DIR.glob("*.yaml")) + sorted(CONTENT_DIR.glob("*.yml"))
     guides = [load_guide(p) for p in all_paths]
 
-    # Newest first when a date is present; undated guides sort last.
+    # Ordering: an explicit `order` field wins (0 = newest), otherwise fall back
+    # to `date` (newest first). Two stable sorts compose these rules.
     guides.sort(key=lambda g: str(g.get("date", "")), reverse=True)
+    guides.sort(key=lambda g: g.get("order", 10**9))
 
     # Give each guide its neighbors for in-page navigation.
     for i, guide in enumerate(guides):
