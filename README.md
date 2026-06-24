@@ -15,6 +15,10 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> **Non-developer?** See [docs/ADD-A-GUIDE.md](docs/ADD-A-GUIDE.md) for a
+> step-by-step, browser-only guide that needs no command line. Copy
+> [content/_TEMPLATE.yaml](content/_TEMPLATE.yaml) to start a new guide.
+
 ## Add a guide
 
 1. Copy an existing file in `content/` (e.g. `content/bible-shorts-9.yaml`) to a

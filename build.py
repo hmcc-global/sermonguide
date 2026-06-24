@@ -168,6 +168,12 @@ def load_guide(path: Path) -> dict:
     return data
 
 
+def content_files() -> list[Path]:
+    """All guide files in content/, skipping `_`-prefixed templates/drafts."""
+    found = sorted(CONTENT_DIR.glob("*.yaml")) + sorted(CONTENT_DIR.glob("*.yml"))
+    return [p for p in found if not p.name.startswith("_")]
+
+
 def build(paths: list[Path]) -> None:
     if not paths:
         print("No content files found in content/.")
@@ -186,7 +192,7 @@ def build(paths: list[Path]) -> None:
 
     # Always load EVERY guide so the index and prev/next links stay complete,
     # even when only a subset of pages is being (re)written.
-    all_paths = sorted(CONTENT_DIR.glob("*.yaml")) + sorted(CONTENT_DIR.glob("*.yml"))
+    all_paths = content_files()
     guides = [load_guide(p) for p in all_paths]
 
     # Ordering: an explicit `order` field wins (0 = newest), otherwise fall back
@@ -229,7 +235,7 @@ def main() -> None:
         if missing:
             sys.exit(f"File(s) not found: {', '.join(str(m) for m in missing)}")
     else:
-        paths = sorted(CONTENT_DIR.glob("*.yaml")) + sorted(CONTENT_DIR.glob("*.yml"))
+        paths = content_files()
     build(paths)
 
 
