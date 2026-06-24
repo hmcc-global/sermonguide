@@ -7,5 +7,8 @@ venv/
 # Generated site
 output/
 
+# Local editor / preview config
+.claude/launch.json
+
 # OS
 .DS_Store
