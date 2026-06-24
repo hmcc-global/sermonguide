@@ -1,0 +1,106 @@
+name: Create guide from issue
+
+# When someone opens a "New Sermon Guide" issue (label: new-guide), turn the
+# pasted markdown into a content/<slug>.yaml file, commit it, then build and
+# deploy the site. Finally, report back on the issue and close it.
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  create-guide:
+    # Only run for the new-guide form, and only for trusted authors (members /
+    # collaborators) so a random issue can't publish to the site.
+    if: >
+      contains(github.event.issue.labels.*.name, 'new-guide') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+    runs-on: ubuntu-latest
+    outputs:
+      slug: ${{ steps.parse.outputs.slug }}
+      ok: ${{ steps.parse.outputs.ok }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Parse the issue into a guide file
+        id: parse
+        env:
+          GUIDE_MARKDOWN: ${{ github.event.issue.body }}
+        run: |
+          if slug=$(python scripts/guide_from_markdown.py 2>parse_error.txt); then
+            echo "slug=$slug" >> "$GITHUB_OUTPUT"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            { echo "error<<EOF"; cat parse_error.txt; echo "EOF"; } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report a parse error and stop
+        if: steps.parse.outputs.ok != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --body \
+          "⚠️ I couldn't read that guide:
+
+          \`\`\`
+          ${{ steps.parse.outputs.error }}
+          \`\`\`
+
+          Edit this issue to fix the format and I'll try again. (See the example in the form, or docs/ADD-A-GUIDE.md.)"
+          exit 1
+
+      - name: Commit the new guide
+        env:
+          SLUG: ${{ steps.parse.outputs.slug }}
+          NUM: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content/
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Add guide '$SLUG' from issue #$NUM"
+            git push
+          fi
+
+  deploy:
+    needs: create-guide
+    if: needs.create-guide.outputs.ok == 'true'
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+
+  announce:
+    needs: [create-guide, deploy]
+    if: needs.create-guide.outputs.ok == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Comment the published link and close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SLUG: ${{ needs.create-guide.outputs.slug }}
+          NUM: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          owner="${REPO%%/*}"; name="${REPO##*/}"
+          url="https://${owner}.github.io/${name}/${SLUG}.html"
+          gh issue comment "$NUM" --body "✅ Published! Your guide is live at:
+          $url
+
+          (If the link 404s, give it another minute for the deploy to finish.)"
+          gh issue close "$NUM"
