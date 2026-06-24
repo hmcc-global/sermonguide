@@ -1,0 +1,54 @@
+name: New Sermon Guide
+description: Publish a new sermon guide to the website by pasting it here.
+title: "New guide"
+labels: ["new-guide"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Paste the sermon guide below in the format shown, then submit.
+        A few minutes after you submit, the guide is published automatically and
+        a link is posted back in this issue.
+
+        **Only the scripture reference is needed — the verses are looked up for you.**
+
+        Copy this starting point and edit it:
+
+        ```markdown
+        # SERIES — Part N: Subtitle
+        Date: 2026-06-22
+        Scripture: Luke 1:46-55
+
+        ## Recap
+        First paragraph of the recap.
+
+        Second paragraph (leave a blank line between paragraphs).
+
+        ## One Thing
+        The single biggest takeaway in one sentence.
+
+        ## Discussion Questions
+        ### Connecting
+        - An opening question?
+        ### Committing
+        - A question about what to do this week?
+
+        ## Next Steps
+        Optional intro sentence.
+        - First step.
+        - Second step.
+        ```
+  - type: textarea
+    id: content
+    attributes:
+      label: Guide content
+      description: Paste the full guide in the markdown format above.
+      placeholder: |
+        # ADORE — Part 5: Worship With Joy
+        Date: 2026-06-22
+        Scripture: Luke 1:46-55
+
+        ## Recap
+        ...
+    validations:
+      required: true

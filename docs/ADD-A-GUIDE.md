@@ -6,6 +6,60 @@ You do **not** need to install anything or use a command line.
 When you're done, the website rebuilds and publishes itself automatically — it
 usually goes live a couple of minutes after you save.
 
+There are two ways to do it. **The form is the easiest** — start there.
+
+---
+
+## Easiest: paste it into a form
+
+1. Go to the repo's **Issues** tab:
+   <https://github.com/hmcc-global/sermonguide/issues>
+2. Click **New issue**, then choose **New Sermon Guide → Get started**.
+3. Paste your guide into the one big text box, in this format:
+
+   ```markdown
+   # SERIES — Part N: Subtitle
+   Date: 2026-06-22
+   Scripture: Luke 1:46-55
+
+   ## Recap
+   First paragraph of the recap.
+
+   Second paragraph (leave a blank line between paragraphs).
+
+   ## One Thing
+   The single biggest takeaway in one sentence.
+
+   ## Discussion Questions
+   ### Connecting
+   - An opening question?
+   ### Committing
+   - A question about what to do this week?
+
+   ## Next Steps
+   Optional intro sentence.
+   - First step.
+   - Second step.
+   ```
+
+   Only the scripture **reference** is needed — the verses are looked up for you.
+
+4. Click **Submit new issue**.
+
+That's it. A bot reads your guide, publishes it, and posts the live link back in
+the issue within a few minutes. If anything in the format is off, the bot
+comments to tell you what to fix — just edit the issue and it tries again.
+
+> **Tip:** You can have an AI (ChatGPT/Claude) produce this exact format from a
+> sermon transcript or your notes, then paste the result into the form.
+
+---
+
+## Alternative: edit a file directly
+
+Prefer working with the files? You can also add a guide by creating a YAML file
+in the `content/` folder. The rest of this page covers that approach.
+
 ---
 
 ## What you'll need

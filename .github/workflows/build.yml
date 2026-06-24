@@ -12,6 +12,7 @@ on:
       - "requirements.txt"
       - ".github/workflows/build.yml"
   workflow_dispatch: {}   # also allow manual runs from the Actions tab
+  workflow_call: {}       # let other workflows (e.g. new-guide) run the deploy
 
 # Permissions needed to publish to GitHub Pages.
 permissions:
