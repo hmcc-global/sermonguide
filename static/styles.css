@@ -7,7 +7,8 @@
   --ink: #0c0c0c;
   --muted: #6b6b6b;
   --rule: rgba(12, 12, 12, 0.12);
-  --accent: #6494fa;          /* hmcc blue — primary accent */
+  --navy: #0c2966;            /* hmcc deep navy — header & footer bars */
+  --accent: #6494fa;          /* hmcc light blue — in-page accent */
   --accent2: #ff8069;         /* warm coral — secondary highlight */
   --maxw: 1080px;             /* outer container */
   --measure: 720px;           /* comfortable reading width */
@@ -37,15 +38,18 @@ h1, h2, h3, p, li, a { overflow-wrap: break-word; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 22px 40px;
-  background: var(--accent);
+  padding: 18px 40px;
+  background: var(--navy);
 }
-.topbar .mark {
-  font-family: var(--display);
-  font-size: 1.5rem;
-  letter-spacing: 0.04em;
-  color: #fff;
-  text-decoration: none;
+.topbar .logo {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+.topbar .logo img {
+  height: 38px;
+  width: auto;
+  display: block;
 }
 .topbar .nav-link {
   font-weight: 600;
@@ -199,23 +203,55 @@ h1, h2, h3, p, li, a { overflow-wrap: break-word; }
 /* ---- footer ----------------------------------------------------------- */
 .site-footer {
   margin-top: 100px;
-  background: var(--accent);
-  padding: 28px 40px;
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.82);
+  background: var(--navy);
+  color: rgba(255, 255, 255, 0.78);
+  padding: 64px 0 28px;
+  font-size: 0.92rem;
 }
-.site-footer .spacer { flex: 1; }
-.site-footer a { color: rgba(255, 255, 255, 0.82); text-decoration: none; }
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1.3fr;
+  gap: 40px;
+}
+.site-footer a { color: rgba(255, 255, 255, 0.78); text-decoration: none; }
 .site-footer a:hover { color: #fff; }
-.site-footer .brand {
+
+.f-logo img { height: 46px; width: auto; display: block; margin-bottom: 16px; }
+.f-name {
   font-family: var(--display);
-  font-size: 1.05rem;
-  letter-spacing: 0.04em;
+  font-size: 1.15rem;
+  letter-spacing: 0.05em;
+  line-height: 1.05;
   color: #fff;
-  text-decoration: none;
+  margin: 0 0 16px;
+}
+.f-mission { margin: 0; max-width: 22em; line-height: 1.6; }
+
+.f-col h4 {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.72rem;
+  color: #fff;
+  margin: 4px 0 16px;
+}
+.f-col ul { list-style: none; margin: 0; padding: 0; }
+.f-col li { margin: 0 0 10px; }
+
+.f-contact-row { margin: 0 0 12px; line-height: 1.5; }
+.f-contact-row strong { color: #fff; font-weight: 600; }
+.f-social { display: flex; gap: 16px; margin-top: 20px; }
+.f-social a { display: inline-flex; color: #fff; }
+.f-social a:hover { color: var(--accent2); }
+
+.footer-bottom {
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 /* ---- index page ------------------------------------------------------- */
@@ -254,13 +290,16 @@ h1, h2, h3, p, li, a { overflow-wrap: break-word; }
 @media (max-width: 860px) {
   .wrap { padding: 0 28px; }
   .dq { gap: 40px 48px; }
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 36px; }
+  .f-brand { grid-column: 1 / -1; }
 }
 
 /* Phones */
 @media (max-width: 600px) {
   body { font-size: 17px; }
   .wrap { padding: 0 22px; }
-  .topbar { padding: 16px 22px; }
+  .topbar { padding: 14px 22px; }
+  .topbar .logo img { height: 32px; }
 
   .hero { padding: 56px 0 24px; }
   .hero .part { margin-top: 1rem; }
@@ -277,13 +316,8 @@ h1, h2, h3, p, li, a { overflow-wrap: break-word; }
   .guide-nav { grid-template-columns: 1fr; gap: 24px; margin-top: 56px; padding-top: 28px; }
   .guide-nav .gn-next { text-align: left; align-items: flex-start; }
 
-  .site-footer {
-    flex-wrap: wrap;
-    gap: 8px 20px;
-    margin-top: 64px;
-    padding: 24px 22px;
-  }
-  .site-footer .spacer { flex-basis: 100%; height: 0; }
+  .site-footer { margin-top: 64px; padding: 48px 0 24px; }
+  .footer-grid { grid-template-columns: 1fr; gap: 32px; }
 }
 
 /* Very small phones */

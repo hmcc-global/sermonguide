@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ series }} — {{ part }}</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -11,7 +13,7 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="mark" href="index.html">{{ footer_brand }}</a>
+    <a class="logo" href="index.html" aria-label="HMCC Sermon Guides"><img src="hmcc-logo.svg" alt="HMCC" width="110" height="43"></a>
     <a class="nav-link" href="index.html">All Guides</a>
   </header>
 
@@ -81,12 +83,6 @@
     {% endif %}
   </main>
 
-  <footer class="site-footer">
-    <a class="brand" href="index.html">{{ footer_brand }}</a>
-    <span class="spacer"></span>
-    <a href="index.html">All Guides</a>
-    <span>Terms &amp; Support</span>
-    <span>Privacy Policy</span>
-  </footer>
+  {% include "_footer.html.j2" %}
 </body>
 </html>
