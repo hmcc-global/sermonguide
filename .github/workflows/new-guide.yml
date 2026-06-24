@@ -10,6 +10,8 @@ on:
 permissions:
   contents: write
   issues: write
+  pages: write       # the called build.yml deploys to Pages...
+  id-token: write    # ...and a reusable workflow can't request more than its caller
 
 jobs:
   create-guide:
