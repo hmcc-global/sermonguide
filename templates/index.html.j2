@@ -33,7 +33,10 @@
               <span class="g-series">{{ g.series }}</span>
               {% if g.scripture_title %}<span class="g-scripture">{{ g.scripture_title }}</span>{% endif %}
             </span>
-            <span class="g-part">{{ g.part }}</span>
+            <span class="g-meta">
+              <span class="g-part">{{ g.part }}</span>
+              {% if g.preacher %}<span class="g-preacher">{{ g.preacher }}</span>{% endif %}
+            </span>
           </span>
         </a>
       </li>

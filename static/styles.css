@@ -307,7 +307,16 @@ h1, h2, h3, p, li, a { overflow-wrap: break-word; }
   border: 1px solid var(--rule); border-radius: 999px;
   padding: 3px 12px; white-space: nowrap;
 }
+/* Second line: part on the left, preacher on the right. */
+.guide-list .g-meta {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px 16px; flex-wrap: wrap;
+}
 .guide-list .g-part { color: var(--muted); }
+.guide-list .g-preacher {
+  flex: 0 0 auto; color: var(--ink); opacity: 0.85;
+  font-size: 0.82rem; font-weight: 500; white-space: nowrap;
+}
 
 /* ---- responsive ------------------------------------------------------- */
 
