@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ series }} — {{ part }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>{{ css | safe }}</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="mark" href="index.html">{{ footer_brand }}</a>
+    <a class="nav-link" href="index.html">All Guides</a>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>{{ series }}</h1>
+      {% if part %}<div class="part">{{ part }}</div>{% endif %}
+    </section>
+
+    <section class="block col passage">
+      <p class="eyebrow">Scripture</p>
+      {% if scripture_title %}<h2>{{ scripture_title }}</h2>{% endif %}
+      {% for p in scripture_passage %}<p>{{ p | verses }}</p>{% endfor %}
+    </section>
+
+    <section class="block col recap">
+      <p class="eyebrow">Sermon Recap</p>
+      <h2>The Message</h2>
+      {% for p in recap %}<p>{{ p }}</p>{% endfor %}
+      {% if one_thing %}<p class="one-thing"><strong>One Thing:</strong> {{ one_thing }}</p>{% endif %}
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Discussion<br>Questions</h2>
+      <div class="dq">
+        {% for category, questions in discussion_questions.items() %}
+        <div class="cat">
+          <h3>{{ category }}</h3>
+          <ol>{% for q in questions %}<li>{{ q }}</li>{% endfor %}</ol>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Next Steps</h2>
+      <div class="col">
+        {% if next_steps_intro %}<p>{{ next_steps_intro }}</p>{% endif %}
+        {% if next_steps_title %}<p class="ns-sub">{{ next_steps_title }}</p>{% endif %}
+        <ol class="ns-list">{% for s in next_steps %}<li>{{ s }}</li>{% endfor %}</ol>
+      </div>
+    </section>
+
+    {% if newer or older %}
+    <nav class="guide-nav">
+      {% if newer %}
+      <a class="gn gn-prev" href="{{ newer.slug }}.html">
+        <span class="gn-dir">&larr; Newer</span>
+        <span class="gn-title">{{ newer.series }} — {{ newer.part }}</span>
+      </a>
+      {% else %}<span></span>{% endif %}
+      {% if older %}
+      <a class="gn gn-next" href="{{ older.slug }}.html">
+        <span class="gn-dir">Older &rarr;</span>
+        <span class="gn-title">{{ older.series }} — {{ older.part }}</span>
+      </a>
+      {% else %}<span></span>{% endif %}
+    </nav>
+    {% endif %}
+  </main>
+
+  <footer class="site-footer">
+    <a class="brand" href="index.html">{{ footer_brand }}</a>
+    <span class="spacer"></span>
+    <a href="index.html">All Guides</a>
+    <span>Terms &amp; Support</span>
+    <span>Privacy Policy</span>
+  </footer>
+</body>
+</html>

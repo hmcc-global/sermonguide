@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ site_title }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>{{ css | safe }}</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="mark" href="index.html">{{ footer_brand }}</a>
+    <a class="nav-link" href="index.html">All Guides</a>
+  </header>
+
+  <main class="wrap">
+    <section class="index-hero">
+      <h1>{{ site_title }}</h1>
+      <div class="tag">Weekly guides for personal study &amp; small groups</div>
+    </section>
+
+    <ul class="guide-list">
+      {% for g in guides %}
+      <li>
+        <a href="{{ g.slug }}.html">
+          <span class="g-series">{{ g.series }}</span>
+          <span class="g-part">{{ g.part }}</span>
+          {% if g.date %}<span class="g-date">{{ g.date }}</span>{% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </main>
+
+  <footer class="site-footer">
+    <span class="brand">{{ footer_brand }}</span>
+    <span class="spacer"></span>
+    <span>Terms &amp; Support</span>
+    <span>Privacy Policy</span>
+  </footer>
+</body>
+</html>

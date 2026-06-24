@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Generated site
+output/
+
+# OS
+.DS_Store
