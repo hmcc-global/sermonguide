@@ -350,8 +350,17 @@ h1, h2, h3, p, li, a { overflow-wrap: break-word; }
   /* Stack date above the headline; let the passage pill drop under the series. */
   .guide-list a { flex-direction: column; gap: 8px; }
   .guide-list .g-date { flex: none; padding-top: 0; }
-  .guide-list .g-head { gap: 8px 16px; }
+  /* Left-align everything in a stack: space-between strands the pill/preacher
+     against the right edge with a ragged gap that varies per row. */
+  .guide-list .g-head {
+    flex-direction: column; align-items: flex-start;
+    justify-content: flex-start; gap: 8px;
+  }
   .guide-list .g-scripture { order: 1; }
+  .guide-list .g-meta {
+    flex-direction: column; align-items: flex-start;
+    justify-content: flex-start; gap: 4px;
+  }
 
   .guide-nav { grid-template-columns: 1fr; gap: 24px; margin-top: 56px; padding-top: 28px; }
   .guide-nav .gn-next { text-align: left; align-items: flex-start; }
