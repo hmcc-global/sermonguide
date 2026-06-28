@@ -216,10 +216,13 @@ def build(paths: list[Path]) -> None:
     all_paths = content_files()
     guides = [load_guide(p) for p in all_paths]
 
-    # Ordering: an explicit `order` field wins (0 = newest), otherwise fall back
-    # to `date` (newest first). Two stable sorts compose these rules.
-    guides.sort(key=lambda g: str(g.get("date", "")), reverse=True)
+    # Ordering: newest first by `date`. An explicit `order` field only breaks
+    # ties between guides that share a date (e.g. two services on one Sunday) —
+    # it no longer overrides the date, so a newly added guide sorts to the top
+    # by its date instead of sinking below the older `order`-tagged ones. Two
+    # stable sorts compose these rules (apply the tie-breaker first).
     guides.sort(key=lambda g: g.get("order", 10**9))
+    guides.sort(key=lambda g: str(g.get("date", "")), reverse=True)
 
     # Give each guide its neighbors for in-page navigation.
     for i, guide in enumerate(guides):

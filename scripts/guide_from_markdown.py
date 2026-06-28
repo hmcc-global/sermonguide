@@ -42,13 +42,39 @@ from __future__ import annotations
 import os
 import re
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 CONTENT_DIR = ROOT / "content"
+
+# Date formats authors realistically paste. We normalize all of them to ISO
+# (YYYY-MM-DD), which build.py expects for display and date-based sorting.
+_DATE_FORMATS = (
+    "%Y-%m-%d",
+    "%m/%d/%Y", "%m/%d/%y",
+    "%B %d, %Y", "%b %d, %Y",
+    "%B %d %Y", "%b %d %Y",
+    "%d %B %Y", "%d %b %Y",
+)
+
+
+def normalize_date(value: str) -> str:
+    """Coerce a written date into ISO YYYY-MM-DD, or return it unchanged.
+
+    Authors paste dates as "2026-06-28", "June 28, 2026", "6/28/2026", etc.
+    We recognize the common shapes; anything we can't parse passes through so
+    nothing is silently dropped.
+    """
+    raw = value.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(raw, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return raw
 
 
 def slugify(text: str) -> str:
@@ -170,8 +196,16 @@ def parse(markdown: str) -> dict:
     header_text = header_zone[: first_section.start()] if first_section else header_zone
 
     def header_field(name: str) -> str:
-        m = re.search(rf"^{name}\s*:\s*(.+)$", header_text,
-                      flags=re.MULTILINE | re.IGNORECASE)
+        # Tolerate markdown emphasis the author may have wrapped the label in,
+        # e.g. "**Date:** ...", "*Scripture*: ...", "__Preacher__: ...". The
+        # markers can sit before the label, between the label and the colon, or
+        # right after the colon, so we allow them in each spot and trim any that
+        # trail the value.
+        m = re.search(
+            rf"^\s*[*_]*\s*{name}\s*[*_]*\s*:\s*[*_]*\s*(.+?)\s*[*_]*$",
+            header_text,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
         return m.group(1).strip() if m else ""
 
     secs = sections(text)
@@ -182,7 +216,7 @@ def parse(markdown: str) -> dict:
     # Always emit a date. build.py derives its `legacy_layout` flag from the
     # presence of `date:` — guides without one render the old layout — so a
     # form guide must carry a date. Default to today when none was given.
-    guide["date"] = header_field("date") or date.today().isoformat()
+    guide["date"] = normalize_date(header_field("date")) or date.today().isoformat()
 
     scripture = header_field("scripture")
     scripture_ref = header_field("scripture ref") or header_field("scripture reference")
