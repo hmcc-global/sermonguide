@@ -68,7 +68,7 @@ function getCat(dq: Record<string, string[]>, name: string): string[] {
 
 export default function Page() {
   const [passcode, setPasscode] = useState("");
-  const [mode, setMode] = useState<Mode>("audio");
+  const [mode, setMode] = useState<Mode>("paste");
   const [stage, setStage] = useState<Stage>("input");
   const [meta, setMeta] = useState<Meta>({
     series: "",
@@ -86,19 +86,45 @@ export default function Page() {
   const [publishing, setPublishing] = useState(false);
   const [result, setResult] = useState<{ liveUrl: string; slug: string } | null>(null);
   const [guides, setGuides] = useState<GuideRef[]>([]);
+  const [authed, setAuthed] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("studio_passcode");
     if (saved) {
       setPasscode(saved);
-      void loadGuides(saved);
+      // Silently unlock if the saved passcode is still valid.
+      fetch("/api/auth", { headers: { "x-app-passcode": saved } })
+        .then((res) => {
+          if (res.ok) {
+            setAuthed(true);
+            void loadGuides(saved);
+          }
+        })
+        .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function savePass(v: string) {
-    setPasscode(v);
-    localStorage.setItem("studio_passcode", v);
+  async function unlock() {
+    const pass = passcode.trim();
+    if (!pass) return setError("Enter the passcode.");
+    setError(null);
+    setChecking(true);
+    try {
+      const res = await fetch("/api/auth", { headers: { "x-app-passcode": pass } });
+      if (res.ok) {
+        localStorage.setItem("studio_passcode", pass);
+        setAuthed(true);
+        void loadGuides(pass);
+      } else {
+        setError("Incorrect passcode.");
+      }
+    } catch {
+      setError("Could not verify the passcode. Try again.");
+    } finally {
+      setChecking(false);
+    }
   }
 
   async function loadGuides(pass: string) {
@@ -257,25 +283,41 @@ export default function Page() {
 
   const slug = meta.series.trim() ? slugify(`${meta.series} ${meta.part}`.trim()) : "";
 
+  if (!authed) {
+    return (
+      <div className="wrap">
+        <h1>Sermon Guide Studio</h1>
+        <p className="sub">Enter the passcode to continue.</p>
+        {error && <div className="error">{error}</div>}
+        <div className="card">
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Passcode</label>
+            <input
+              type="password"
+              value={passcode}
+              onChange={(e) => setPasscode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void unlock();
+              }}
+              placeholder="Shared passcode"
+              autoFocus
+            />
+          </div>
+          <div className="actions" style={{ marginTop: 14 }}>
+            <button onClick={() => void unlock()} disabled={checking}>
+              {checking && <span className="spinner" />}
+              {checking ? "Checking…" : "Unlock"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="wrap">
       <h1>Sermon Guide Studio</h1>
       <p className="sub">Upload a sermon, review the generated guide, and publish it live.</p>
-
-      <div className="card">
-        <div className="field" style={{ marginBottom: 0 }}>
-          <label>
-            Passcode <span className="hint">— required to generate or publish</span>
-          </label>
-          <input
-            type="text"
-            value={passcode}
-            onChange={(e) => savePass(e.target.value)}
-            onBlur={(e) => e.target.value && loadGuides(e.target.value)}
-            placeholder="Shared passcode"
-          />
-        </div>
-      </div>
 
       {error && <div className="error">{error}</div>}
 
