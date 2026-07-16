@@ -7,6 +7,17 @@ import type { GuideMeta } from "@/lib/guide";
 export const runtime = "nodejs";
 export const maxDuration = 300; // requires Fluid compute; audio + transcript can take 1-2 min
 
+// SSRF guard: only ever fetch/del a Vercel Blob URL. Without this, a caller could point
+// blobUrl at an internal address (e.g. cloud metadata) and have the server fetch it.
+function isVercelBlobUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" && u.hostname.endsWith(".public.blob.vercel-storage.com");
+  } catch {
+    return false;
+  }
+}
+
 type GenerateBody = {
   meta?: GuideMeta;
   transcript?: string; // Phase 1 path
@@ -35,6 +46,9 @@ export async function POST(req: NextRequest) {
     // --- Audio path ---
     if (body.blobUrl) {
       const blobUrl = body.blobUrl;
+      if (!isVercelBlobUrl(blobUrl)) {
+        return NextResponse.json({ error: "Invalid audio URL" }, { status: 400 });
+      }
       try {
         const bytes = await fetchBlobBytes(blobUrl);
         const result = await generateFromAudio(bytes, body.mimeType || "audio/mp3", meta);

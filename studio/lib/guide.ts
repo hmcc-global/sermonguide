@@ -37,6 +37,13 @@ export function makeSlug(series: string, part?: string): string {
   return slugify(base);
 }
 
+// Guards a slug that arrives from a request (admin edit/delete, inbox id) against
+// path traversal before it's interpolated into a repo path. slugify() only ever
+// emits [a-z0-9-], so a legitimate slug always passes.
+export function isValidSlug(slug: unknown): slug is string {
+  return typeof slug === "string" && slug.length > 0 && slug.length <= 200 && /^[a-z0-9-]+$/.test(slug);
+}
+
 // ---- Date: always emit ISO so build.py uses the modern layout ----
 
 export function normalizeDate(input?: string): string {

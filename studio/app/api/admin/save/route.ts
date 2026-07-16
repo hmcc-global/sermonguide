@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkAdminPasscode } from "@/lib/auth";
 import { commitChanges, getFileRaw, makeOctokit, type CommitFile } from "@/lib/github";
-import { makeSlug, mergeGuideYaml, type GuideContent, type GuideMeta } from "@/lib/guide";
+import { isValidSlug, makeSlug, mergeGuideYaml, type GuideContent, type GuideMeta } from "@/lib/guide";
 
 export const runtime = "nodejs";
 
@@ -36,6 +36,8 @@ export async function POST(req: NextRequest) {
   const form = body.meta;
   const content = body.content;
   if (!originalSlug) return NextResponse.json({ error: "originalSlug is required" }, { status: 400 });
+  if (!isValidSlug(originalSlug))
+    return NextResponse.json({ error: "Invalid originalSlug" }, { status: 400 });
   if (!form?.series?.trim()) return NextResponse.json({ error: "Series is required" }, { status: 400 });
   if (!content) return NextResponse.json({ error: "Guide content is required" }, { status: 400 });
 

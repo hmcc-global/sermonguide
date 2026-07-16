@@ -5,6 +5,10 @@ import { INBOX_DIR, listInbox, makeInboxId, type InboxMeta } from "@/lib/inbox";
 
 export const runtime = "nodejs";
 
+// A sermon VTT is tens–hundreds of KB; cap well above that but far below the repo-bloat
+// range so a crafted/looping caller can't commit huge blobs. Vercel also bounds the body.
+const MAX_VTT_BYTES = 5 * 1024 * 1024;
+
 // GET /api/inbox — list pending transcripts for the /create picker.
 export async function GET(req: NextRequest) {
   if (!checkPasscode(req)) {
@@ -48,16 +52,20 @@ export async function POST(req: NextRequest) {
   if (!vtt) {
     return NextResponse.json({ error: "vtt is required" }, { status: 400 });
   }
+  if (Buffer.byteLength(vtt, "utf8") > MAX_VTT_BYTES) {
+    return NextResponse.json({ error: "Transcript is too large" }, { status: 413 });
+  }
   const title = (body.title ?? "").trim() || "Untitled sermon";
   const date = (body.date ?? "").trim() || undefined;
-  const id = makeInboxId(title, date);
+  const sourceJobId = (body.sourceJobId ?? "").trim() || undefined;
+  const id = makeInboxId(title, date, sourceJobId);
 
   const meta: InboxMeta = {
     title,
     date,
     preacher: (body.preacher ?? "").trim() || undefined,
     source: (body.source ?? "").trim() || undefined,
-    sourceJobId: (body.sourceJobId ?? "").trim() || undefined,
+    sourceJobId,
     receivedAt: new Date().toISOString(),
     words:
       typeof body.words === "number" && body.words > 0

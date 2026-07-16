@@ -84,10 +84,12 @@ export async function POST(req: NextRequest) {
     const message = e instanceof Error ? e.message : "Publish failed";
     const status = (e as { status?: number })?.status;
     if (status === 404) {
+      // Log the actionable detail server-side; don't disclose repo owner/name/branch to the client.
+      console.error(
+        `[publish] GitHub 404 for ${target.owner}/${target.repo}@${target.branch}. Check GITHUB_OWNER/REPO/BRANCH exist with no typos and that GITHUB_TOKEN has Contents: write. Redeploy after any env change.`,
+      );
       return NextResponse.json(
-        {
-          error: `GitHub returned 404 for ${target.owner}/${target.repo}@${target.branch}. Check that GITHUB_OWNER (${target.owner}), GITHUB_REPO (${target.repo}), and GITHUB_BRANCH (${target.branch}) are exactly right with no typos or trailing spaces, that "${target.branch}" is a real branch, and that GITHUB_TOKEN has Contents: write access to this repo. Redeploy after any env change.`,
-        },
+        { error: "GitHub rejected the publish (misconfiguration). Check the server logs." },
         { status: 500 },
       );
     }
