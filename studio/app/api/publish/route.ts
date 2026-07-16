@@ -64,7 +64,10 @@ export async function POST(req: NextRequest) {
     }
 
     const commitSha = await commitFiles(target, `Add guide '${slug}' via studio`, files);
-    const liveUrl = `https://${target.owner}.github.io/${target.repo}/${slug}.html`;
+    const base =
+      process.env.SITE_URL?.replace(/\/+$/, "") ||
+      `https://${target.owner}.github.io/${target.repo}`;
+    const liveUrl = `${base}/${slug}.html`;
 
     return NextResponse.json({ slug, commitSha, liveUrl });
   } catch (e: unknown) {

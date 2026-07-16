@@ -1,81 +1,95 @@
-# Sermon Guide Studio
+# Sermon Guide Studio + guide site
 
-A small web app that turns a sermon into a published guide in the `sermonguide` site.
-Leaders paste a transcript (Phase 1) — soon, upload audio (Phase 2) — generate a draft with
-Gemini, review and edit it, and approve. On approve it commits `content/<slug>.yaml` (and a
-`transcripts/<slug>.md` archive) to this repo, which triggers the existing build + Pages deploy.
+One Next.js app that both **serves the guide site** and **hosts the authoring studio**:
 
-Lives in `studio/` inside the `sermonguide` repo. It does **not** trigger the Python build
-(`build.yml` only watches `content/`, `templates/`, `static/`, `build.py`, `requirements.txt`).
+- `/` — the guide index (ported from `build.py` + Jinja templates, generated at build from `content/*.yaml`)
+- `/<slug>.html` — an individual guide (same `.html` URLs as the Pages site)
+- `/create` — the studio: upload audio or paste a transcript → Gemini draft → review → publish
 
-## Status — all phases built
+On publish it commits `content/<slug>.yaml` (+ a `transcripts/<slug>.md` archive) to this repo. That
+push triggers **two** rebuilds: Vercel regenerates the guide site (new host), and `build.yml` still
+deploys GitHub Pages (kept as a backup). GitHub Pages can be retired later.
 
-- **Phase 1:** paste transcript → guide → review → publish.
-- **Phase 2:** upload audio → Vercel Blob → Gemini Files API (two streamed calls: guide + transcript)
-  → review → publish. Blob is deleted after processing.
-- **Phase 3:** published-guides list, slug/URL display, transcript-failed notice, friendlier errors.
+Lives in `studio/` inside the `sermonguide` repo. Studio/app changes do **not** trigger the Python
+`build.yml` (it only watches `content/`, `templates/`, `static/`, `build.py`, `requirements.txt`).
 
-Verified: typecheck + production build clean; contract logic unit-tested against the Python pipeline;
-all four API routes runtime-tested for passcode gating and graceful failure. Not yet run against live
-Gemini / GitHub / Blob (needs real keys) and not yet deployed.
+## Architecture
 
-### Input modes
+```
+studio/
+  app/
+    layout.tsx              # root: html/body + self-hosted fonts (next/font). No global CSS.
+    (site)/                 # the guide site — CSS code-split from the studio
+      layout.tsx            #   topbar + footer, imports site.css
+      site.css              #   verbatim port of static/styles.css (fonts -> next/font vars)
+      page.tsx              #   index (/)
+      [guide]/page.tsx      #   guide (/<slug>.html); generateStaticParams, dynamicParams=false
+    create/                 # the studio
+      layout.tsx            #   imports studio.css
+      studio.css            #   the studio's own styles
+      page.tsx              #   upload/paste -> review -> publish UI (client)
+    api/
+      generate/route.ts     # passcode-gated; transcript OR audio(blobUrl) -> Gemini -> guide (+transcript)
+      publish/route.ts      # passcode-gated; assemble YAML + transcript, atomic commit
+      upload/route.ts       # passcode-gated Blob client-token minter (onBeforeGenerateToken)
+      guides/route.ts       # passcode-gated; lists published guide slugs
+  lib/
+    guides.ts               # BUILD-TIME: read ../content/*.yaml, sort, neighbors, humandate, versesHtml
+    esv.ts                  # BUILD-TIME: ESV passage fetch + disk cache (port of build.py)
+    guide.ts                # slug / date / question order / YAML assembly (studio publish)
+    gemini.ts               # Gemini calls (transcript/audio -> guide, transcript)
+    github.ts               # atomic two-file commit + collision check
+    auth.ts                 # passcode check (fails closed)
+```
 
-- **Upload audio** (default): mp3 recommended (m4a/wav accepted). Goes browser → Blob → Gemini.
-- **Paste transcript:** no audio; text → Gemini. Fastest, zero upload.
+The guide/index pages are **statically generated at build** by reading `../content` (the repo root).
+CSS is code-split by route group, so `site.css` and `studio.css` (which both define `:root` vars)
+never load on the same page.
 
 ## Local setup
 
 ```bash
 cd studio
 npm install
-cp .env.example .env.local   # then fill in the values
-npm run dev                  # http://localhost:3000
+cp .env.example .env.local   # fill in the values
+npm run dev                  # http://localhost:3000  (guides at /, studio at /create)
 ```
 
-Required env vars (see `.env.example`):
+Env vars (see `.env.example`):
 
 | Var | What |
 |---|---|
-| `APP_PASSCODE` | Shared passcode leaders type to use the app. |
-| `GEMINI_API_KEY` | From https://aistudio.google.com/apikey (free tier ok). |
-| `GITHUB_TOKEN` | Fine-grained PAT, scoped to `sermonguide`. **Contents: Read and write** + **Metadata: Read-only**. |
+| `APP_PASSCODE` | Shared passcode leaders type to use the studio. |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey (free tier ok). |
+| `GITHUB_TOKEN` | Fine-grained PAT scoped to `sermonguide`: **Contents: Read and write** + **Metadata: Read-only**. |
 | `GITHUB_OWNER` / `GITHUB_REPO` / `GITHUB_BRANCH` | `hmcc-global` / `sermonguide` / `main`. |
+| `SITE_URL` | Public base URL of the guide site (the studio's "live" link). Falls back to the github.io URL. |
+| `ESV_API_KEY` | **Build-time**, optional. Lets guides that have only a scripture *reference* (studio-published ones) fetch the passage text. Guides with inline `scripture_passage` don't need it. |
 
-> Test against a fork or a throwaway branch first (`GITHUB_BRANCH`) so you don't push test guides to the live site.
+> Test against a throwaway `GITHUB_BRANCH` first so publishes don't hit the live site.
 
 ## Deploy (Vercel)
 
-1. Import the `sermonguide` repo into Vercel.
-2. Set **Root Directory = `studio`**.
-3. Add the env vars above in the Vercel project settings (none prefixed `NEXT_PUBLIC_`).
-4. Confirm **Fluid compute** is enabled (gives 300s functions; needed for Phase 2 audio).
+1. Import `sermonguide` into Vercel; set **Root Directory = `studio`**.
+2. **Enable "Include files outside of the Root Directory in the Build Step"** (Settings → General →
+   Root Directory). **Required** — the guide pages read `../content` at build; without it the build
+   fails with a missing-directory error.
+3. Add the env vars above (none prefixed `NEXT_PUBLIC_`). Set `SITE_URL` to the Vercel domain and
+   `ESV_API_KEY` so studio-published (reference-only) guides render their passage.
+4. Confirm **Fluid compute** is on (300s functions; needed for Phase 2 audio).
+5. A push to `main` (including a studio publish) auto-rebuilds the site on Vercel.
 
-## Contracts honored (must stay in sync with the Python pipeline)
+## Fidelity to build.py (guide rendering)
 
-- **Slug:** `("{series} {part}").trim()` → `[^A-Za-z0-9]+` → `-`, strip dashes, lowercase. (`lib/guide.ts`)
-- **Date:** always emitted as ISO `YYYY-MM-DD` (its absence would force the legacy layout).
-- **Discussion questions:** ordered Connecting → Considering → Confessing → Committing; unknowns appended.
-- **Scripture:** writes `scripture_ref` + `scripture_title` only; the site's build fetches the passage
-  text from the ESV API (requires `ESV_API_KEY` as a repo Actions secret — confirm it's set).
-- **Publish:** both files in one commit via the Git Data API; a PAT commit triggers `build.yml`.
-- **Collision:** publish checks for an existing `content/<slug>.yaml` and asks before overwriting.
+Replicated 1:1: slug / date / question order / `legacy_layout` (honoring an explicit value) / sort
+(stable `order` tie-break then codepoint `date` desc) / prev-next neighbors / `^N` verse markers /
+`humandate` (`%b %-d, %Y`, non-zero-padded ok) / markupsafe-equivalent escaping.
 
-## Layout
+**Scripture** matches `build.py`: when a guide has a reference (`scripture_ref` or `scripture_title`),
+the build fetches the ESV passage and it overrides any inline text; on failure (no `ESV_API_KEY`, cache
+miss, network error) it falls back to the inline `scripture_passage`. So:
 
-```
-studio/
-  app/
-    page.tsx              # single-page UI: input → working → review
-    layout.tsx, globals.css
-    api/
-      generate/route.ts   # passcode-gated; transcript OR audio(blobUrl) → Gemini → guide (+transcript)
-      publish/route.ts    # passcode-gated; assemble YAML + transcript, atomic commit
-      upload/route.ts     # passcode-gated Blob client-token minter (onBeforeGenerateToken)
-      guides/route.ts     # passcode-gated; lists published guide slugs
-  lib/
-    auth.ts               # passcode check (fails closed)
-    guide.ts              # slug / date / question order / YAML assembly
-    gemini.ts             # Gemini call (transcript → guide)
-    github.ts             # atomic two-file commit + collision check
-```
+- With `ESV_API_KEY` set at build (Vercel) → all guides render fresh ESV, identical to the Pages backup.
+- Without it (e.g. local dev) → guides with inline text render that; **reference-only guides (every
+  studio-published guide) show no scripture until the key is set.** A build warning names any guide
+  whose reference couldn't be resolved. **Set `ESV_API_KEY` in Vercel.**
