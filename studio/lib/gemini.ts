@@ -80,17 +80,20 @@ export async function generateGuideFromTranscript(
 ): Promise<GuideContent> {
   const ai = client();
   const prompt = `${guidePrompt(meta)}\n\n--- TRANSCRIPT ---\n${transcript}`;
-  const res = await ai.models.generateContent({
-    model: MODEL,
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      maxOutputTokens: 16384,
-      temperature: 0.4,    },
+  return withRetry(async () => {
+    const res = await ai.models.generateContent({
+      model: MODEL,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 32768,
+        temperature: 0.4,
+      },
+    });
+    const raw = res.text;
+    if (!raw) throw new Error("Gemini returned an empty response");
+    return parseGuide(raw);
   });
-  const raw = res.text;
-  if (!raw) throw new Error("Gemini returned an empty response");
-  return parseGuide(raw);
 }
 
 // ---- Phase 2: audio -> { guide, transcript } ----
@@ -157,20 +160,23 @@ async function streamGuide(
   audioPart: Part,
   meta: GuideMeta,
 ): Promise<GuideContent> {
-  const stream = await ai.models.generateContentStream({
-    model: MODEL,
-    contents: [{ role: "user", parts: [{ text: guidePrompt(meta) }, audioPart] }],
-    config: {
-      responseMimeType: "application/json",
-      maxOutputTokens: 16384,
-      temperature: 0.4,    },
+  return withRetry(async () => {
+    const stream = await ai.models.generateContentStream({
+      model: MODEL,
+      contents: [{ role: "user", parts: [{ text: guidePrompt(meta) }, audioPart] }],
+      config: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 32768,
+        temperature: 0.4,
+      },
+    });
+    let text = "";
+    for await (const chunk of stream) {
+      if (chunk.text) text += chunk.text;
+    }
+    if (!text.trim()) throw new Error("Gemini returned an empty guide");
+    return parseGuide(text);
   });
-  let text = "";
-  for await (const chunk of stream) {
-    if (chunk.text) text += chunk.text;
-  }
-  if (!text.trim()) throw new Error("Gemini returned an empty guide");
-  return parseGuide(text);
 }
 
 async function streamTranscript(ai: GoogleGenAI, audioPart: Part): Promise<string> {
@@ -193,20 +199,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// Retry a flaky generation (empty/invalid JSON, transient API error) a couple of times.
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Generation failed");
+}
+
 // ---- Shared JSON parsing ----
 
 function parseGuide(raw: string): GuideContent {
-  let text = raw.trim();
-  if (text.startsWith("```")) {
-    text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  }
-  let data: unknown;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error("Gemini did not return valid JSON");
-  }
-  const obj = data as Record<string, unknown>;
+  const obj = extractJsonObject(raw);
+  if (!obj) throw new Error("Gemini did not return valid JSON");
 
   const asStringList = (v: unknown): string[] =>
     Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : [];
@@ -218,7 +228,7 @@ function parseGuide(raw: string): GuideContent {
     if (list.length) discussion_questions[k] = list;
   }
 
-  return {
+  const guide: GuideContent = {
     recap: asStringList(obj.recap),
     one_thing: typeof obj.one_thing === "string" ? obj.one_thing.trim() : "",
     discussion_questions,
@@ -228,4 +238,42 @@ function parseGuide(raw: string): GuideContent {
     next_steps_title:
       typeof obj.next_steps_title === "string" ? obj.next_steps_title.trim() : undefined,
   };
+
+  // Treat an empty result as a failure so withRetry can try again.
+  if (!guide.recap.length && !Object.keys(guide.discussion_questions).length) {
+    throw new Error("Gemini did not return valid JSON");
+  }
+  return guide;
+}
+
+// Pull a JSON object out of the model text, tolerating code fences or stray prose.
+function extractJsonObject(raw: string): Record<string, unknown> | null {
+  let text = raw.trim();
+  if (text.startsWith("```")) {
+    text = text
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+  }
+  const direct = safeJsonObject(text);
+  if (direct) return direct;
+
+  // Fall back to the outermost { ... } span if the model added text around it.
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    return safeJsonObject(text.slice(start, end + 1));
+  }
+  return null;
+}
+
+function safeJsonObject(s: string): Record<string, unknown> | null {
+  try {
+    const v = JSON.parse(s);
+    return v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
 }
