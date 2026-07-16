@@ -7,7 +7,8 @@ import {
   type GuideContent,
   type GuideMeta,
 } from "@/lib/guide";
-import { commitFiles, fileExists, makeOctokit, type CommitFile } from "@/lib/github";
+import { commitChanges, fileExists, makeOctokit, type CommitFile } from "@/lib/github";
+import { existingInboxPaths, isValidInboxId } from "@/lib/inbox";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,7 @@ type PublishBody = {
   content?: GuideContent;
   transcript?: string;
   confirmOverwrite?: boolean;
+  inboxId?: string; // when the guide came from an inbox item, clear it in the same commit
 };
 
 export async function POST(req: NextRequest) {
@@ -30,7 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { meta, content, transcript, confirmOverwrite } = body;
+  const { meta, content, transcript, confirmOverwrite, inboxId } = body;
   if (!meta?.series?.trim()) {
     return NextResponse.json({ error: "Series is required" }, { status: 400 });
   }
@@ -63,7 +65,15 @@ export async function POST(req: NextRequest) {
       files.push({ path: transcriptPath, content: buildTranscriptMd(meta, transcript) });
     }
 
-    const commitSha = await commitFiles(target, `Add guide '${slug}' via studio`, files);
+    // If this guide came from an inbox item, remove that staging pair in the same
+    // commit. The transcript is preserved as transcripts/<slug>.md above.
+    const deletes =
+      inboxId && isValidInboxId(inboxId) ? await existingInboxPaths(target, inboxId) : [];
+
+    const commitSha = await commitChanges(target, `Add guide '${slug}' via studio`, {
+      upserts: files,
+      deletes,
+    });
     const base =
       process.env.SITE_URL?.replace(/\/+$/, "") ||
       `https://${target.owner}.github.io/${target.repo}`;

@@ -28,6 +28,16 @@ type Draft = {
 
 type GuideRef = { slug: string; url: string };
 
+type InboxRow = {
+  id: string;
+  title: string;
+  date?: string;
+  preacher?: string;
+  source?: string;
+  receivedAt?: string;
+  words?: number;
+};
+
 const EMPTY_DRAFT: Draft = {
   recap: "",
   one_thing: "",
@@ -66,6 +76,35 @@ function getCat(dq: Record<string, string[]>, name: string): string[] {
   return key ? dq[key] : [];
 }
 
+function fmtDate(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function timeAgo(iso?: string): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (isNaN(then)) return "";
+  const s = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function describeInbox(row: InboxRow): string {
+  const parts: string[] = [];
+  if (row.date) parts.push(fmtDate(row.date));
+  if (row.receivedAt) parts.push(`received ${timeAgo(row.receivedAt)}`);
+  if (typeof row.words === "number" && row.words > 0) parts.push(`${row.words.toLocaleString()} words`);
+  if (row.preacher) parts.push(row.preacher);
+  return parts.join(" · ");
+}
+
 export default function Page() {
   const [passcode, setPasscode] = useState("");
   const [mode, setMode] = useState<Mode>("paste");
@@ -86,6 +125,9 @@ export default function Page() {
   const [publishing, setPublishing] = useState(false);
   const [result, setResult] = useState<{ liveUrl: string; slug: string } | null>(null);
   const [guides, setGuides] = useState<GuideRef[]>([]);
+  const [inbox, setInbox] = useState<InboxRow[]>([]);
+  const [inboxId, setInboxId] = useState<string | null>(null);
+  const [inboxBusy, setInboxBusy] = useState<string | null>(null);
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(false);
 
@@ -99,6 +141,7 @@ export default function Page() {
           if (res.ok) {
             setAuthed(true);
             void loadGuides(saved);
+            void loadInbox(saved);
           }
         })
         .catch(() => {});
@@ -117,6 +160,7 @@ export default function Page() {
         localStorage.setItem("studio_passcode", pass);
         setAuthed(true);
         void loadGuides(pass);
+        void loadInbox(pass);
       } else {
         setError("Incorrect passcode.");
       }
@@ -136,6 +180,67 @@ export default function Page() {
       }
     } catch {
       /* non-critical */
+    }
+  }
+
+  async function loadInbox(pass: string) {
+    try {
+      const res = await fetch("/api/inbox", { headers: { "x-app-passcode": pass } });
+      if (res.ok) {
+        const data = await res.json();
+        setInbox(Array.isArray(data.items) ? data.items : []);
+      }
+    } catch {
+      /* non-critical */
+    }
+  }
+
+  // Pull a delivered transcript into the form. Fills the transcript box and any
+  // metadata that came with it; the leader still sets Series/Part.
+  async function useInboxItem(row: InboxRow) {
+    setError(null);
+    setInboxBusy(row.id);
+    try {
+      const res = await fetch(`/api/inbox/${encodeURIComponent(row.id)}`, {
+        headers: { "x-app-passcode": passcode },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not load that transcript");
+      setMode("paste");
+      setTranscript(typeof data.vtt === "string" ? data.vtt : "");
+      const m = (data.meta ?? {}) as { date?: string; preacher?: string };
+      setMeta((prev) => ({
+        ...prev,
+        date: prev.date || m.date || "",
+        preacher: prev.preacher || m.preacher || "",
+      }));
+      setInboxId(row.id);
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load that transcript");
+    } finally {
+      setInboxBusy(null);
+    }
+  }
+
+  // Remove a delivered transcript without publishing it.
+  async function dismissInboxItem(row: InboxRow) {
+    if (!window.confirm(`Dismiss "${row.title}"? It will be removed from the inbox.`)) return;
+    setError(null);
+    setInboxBusy(row.id);
+    try {
+      const res = await fetch(`/api/inbox/${encodeURIComponent(row.id)}`, {
+        method: "DELETE",
+        headers: { "x-app-passcode": passcode },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not dismiss that transcript");
+      setInbox((list) => list.filter((it) => it.id !== row.id));
+      if (inboxId === row.id) setInboxId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not dismiss that transcript");
+    } finally {
+      setInboxBusy(null);
     }
   }
 
@@ -251,6 +356,7 @@ export default function Page() {
           content: contentOut(),
           transcript,
           confirmOverwrite,
+          inboxId: mode === "paste" ? inboxId ?? undefined : undefined,
         }),
       });
       const data = await res.json();
@@ -262,7 +368,9 @@ export default function Page() {
       }
       if (!res.ok) throw new Error(data.error || "Publish failed");
       setResult({ liveUrl: data.liveUrl, slug: data.slug });
+      setInboxId(null);
       void loadGuides(passcode);
+      void loadInbox(passcode);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Publish failed");
     } finally {
@@ -279,6 +387,7 @@ export default function Page() {
     setDraft(EMPTY_DRAFT);
     setResult(null);
     setError(null);
+    setInboxId(null);
   }
 
   const slug = meta.series.trim() ? slugify(`${meta.series} ${meta.part}`.trim()) : "";
@@ -337,6 +446,43 @@ export default function Page() {
 
       {!result && stage === "input" && (
         <>
+          {inbox.length > 0 && (
+            <div className="card">
+              <div className="inbox-head">
+                <label style={{ margin: 0 }}>Waiting from SermonClipper</label>
+                <span className="inbox-count">{inbox.length} available</span>
+              </div>
+              <div className="inbox-list">
+                {inbox.map((row) => (
+                  <div
+                    key={row.id}
+                    className={inboxId === row.id ? "inbox-item current" : "inbox-item"}
+                  >
+                    <div className="inbox-meta">
+                      <div className="t">{row.title}</div>
+                      {describeInbox(row) && <div className="d">{describeInbox(row)}</div>}
+                    </div>
+                    <button
+                      className="secondary"
+                      onClick={() => void dismissInboxItem(row)}
+                      disabled={inboxBusy !== null}
+                    >
+                      Dismiss
+                    </button>
+                    <button onClick={() => void useInboxItem(row)} disabled={inboxBusy !== null}>
+                      {inboxBusy === row.id && <span className="spinner" />}
+                      {inboxId === row.id ? "Loaded" : "Use this"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="muted" style={{ marginTop: 8 }}>
+                Picking one loads its transcript below and fills the date. Dismiss removes it without
+                publishing.
+              </p>
+            </div>
+          )}
+
           <div className="card">
             <div className="tabs">
               <button
@@ -350,6 +496,7 @@ export default function Page() {
                 onClick={() => setMode("paste")}
               >
                 Paste transcript
+                {inbox.length > 0 && <span className="tab-badge">{inbox.length}</span>}
               </button>
             </div>
 
@@ -432,7 +579,10 @@ export default function Page() {
               </div>
             ) : (
               <div className="field">
-                <label>Transcript</label>
+                <label>
+                  Transcript
+                  {inboxId && <span className="hint"> — loaded from the inbox</span>}
+                </label>
                 <textarea
                   value={transcript}
                   onChange={(e) => setTranscript(e.target.value)}

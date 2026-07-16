@@ -263,3 +263,81 @@ input[type="file"] {
   font-size: 14px;
   font-family: inherit;
 }
+
+/* ---- transcript inbox (delivered from SermonClipper) ---- */
+.inbox-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.inbox-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.inbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.inbox-item.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.inbox-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.inbox-item .t {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inbox-item .d {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.inbox-item button {
+  padding: 7px 13px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.tab-badge {
+  display: inline-block;
+  min-width: 18px;
+  text-align: center;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 6px;
+  margin-left: 7px;
+}
+
+button.tab.active .tab-badge {
+  background: var(--accent);
+  color: #fff;
+}
