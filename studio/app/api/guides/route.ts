@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
   try {
     const target = makeOctokit();
     const slugs = await listGuideSlugs(target);
-    const base = `https://${target.owner}.github.io/${target.repo}`;
+    const base =
+      process.env.SITE_URL?.replace(/\/+$/, "") ||
+      `https://${target.owner}.github.io/${target.repo}`;
     return NextResponse.json({
       guides: slugs.map((slug) => ({ slug, url: `${base}/${slug}.html` })),
     });
