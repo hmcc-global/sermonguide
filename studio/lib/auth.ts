@@ -8,3 +8,12 @@ export function checkPasscode(req: NextRequest): boolean {
   const given = req.headers.get("x-app-passcode");
   return typeof given === "string" && given.length > 0 && given === expected;
 }
+
+// Separate, higher-privilege gate for the /manage view (edit + delete).
+// Distinct passcode and header from the create audience. Fails closed.
+export function checkAdminPasscode(req: NextRequest): boolean {
+  const expected = process.env.ADMIN_PASSCODE;
+  if (!expected) return false;
+  const given = req.headers.get("x-admin-passcode");
+  return typeof given === "string" && given.length > 0 && given === expected;
+}
