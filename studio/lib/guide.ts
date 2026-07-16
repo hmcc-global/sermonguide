@@ -100,6 +100,80 @@ export function buildGuideYaml(meta: GuideMeta, content: GuideContent): string {
   return yaml.dump(obj, { lineWidth: -1, noRefs: true });
 }
 
+// ---- Manage view: parse an existing guide into form fields, and merge edits back ----
+
+export type GuideFormData = {
+  meta: { series: string; part: string; date: string; preacher: string; scripture: string };
+  content: {
+    recap: string[];
+    one_thing: string;
+    discussion_questions: Record<string, string[]>;
+    next_steps: string[];
+    next_steps_intro: string;
+    next_steps_title: string;
+  };
+};
+
+export function parseGuideForForm(raw: string): GuideFormData {
+  const d = (yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>) || {};
+  const str = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
+  const list = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x)) : []);
+  const dq: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries((d.discussion_questions ?? {}) as Record<string, unknown>)) {
+    dq[k] = list(v);
+  }
+  return {
+    meta: {
+      series: str(d.series),
+      part: str(d.part),
+      date: d.date != null ? String(d.date) : "",
+      preacher: str(d.preacher),
+      scripture: str(d.scripture_title) || str(d.scripture_ref),
+    },
+    content: {
+      recap: list(d.recap),
+      one_thing: str(d.one_thing),
+      discussion_questions: dq,
+      next_steps: list(d.next_steps),
+      next_steps_intro: str(d.next_steps_intro),
+      next_steps_title: str(d.next_steps_title),
+    },
+  };
+}
+
+// Overlay edited fields onto the ORIGINAL YAML so untouched keys (order,
+// scripture_passage, footer_brand, ...) are preserved. Clearing a field removes
+// its key. If the scripture reference changed, drop the stale inline passage.
+export function mergeGuideYaml(originalRaw: string, meta: GuideMeta, content: GuideContent): string {
+  const obj = (yaml.load(originalRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>) || {};
+  const origRef = String(obj.scripture_ref ?? obj.scripture_title ?? "");
+
+  const set = (k: string, v: unknown) => {
+    const empty = v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
+    if (empty) delete obj[k];
+    else obj[k] = v;
+  };
+
+  set("series", meta.series);
+  set("part", meta.part);
+  obj.date = normalizeDate(meta.date);
+  set("preacher", meta.preacher);
+  set("scripture_title", meta.scripture_title);
+  set("scripture_ref", meta.scripture_ref);
+  set("recap", content.recap);
+  set("one_thing", content.one_thing);
+  const dq = orderQuestions(content.discussion_questions || {});
+  set("discussion_questions", Object.keys(dq).length ? dq : undefined);
+  set("next_steps_intro", content.next_steps_intro);
+  set("next_steps_title", content.next_steps_title);
+  set("next_steps", content.next_steps);
+
+  const newRef = String(meta.scripture_ref || meta.scripture_title || "");
+  if (newRef !== origRef) delete obj.scripture_passage;
+
+  return yaml.dump(obj, { lineWidth: -1, noRefs: true });
+}
+
 export function buildTranscriptMd(meta: GuideMeta, transcript: string): string {
   const title = [meta.series, meta.part].filter(Boolean).join(" — ");
   const lines = [

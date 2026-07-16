@@ -1,4 +1,5 @@
 import { Octokit } from "@octokit/rest";
+import yaml from "js-yaml";
 
 export type RepoTarget = {
   octokit: Octokit;
@@ -8,6 +9,13 @@ export type RepoTarget = {
 };
 
 export type CommitFile = { path: string; content: string };
+export type GuideMetaRow = {
+  slug: string;
+  series?: string;
+  part?: string;
+  date?: string;
+  preacher?: string;
+};
 
 export function makeOctokit(): { octokit: Octokit; owner: string; repo: string; branch: string } {
   const token = process.env.GITHUB_TOKEN;
@@ -21,15 +29,29 @@ export function makeOctokit(): { octokit: Octokit; owner: string; repo: string; 
 
 export async function fileExists(t: RepoTarget, path: string): Promise<boolean> {
   try {
-    await t.octokit.rest.repos.getContent({
+    await t.octokit.rest.repos.getContent({ owner: t.owner, repo: t.repo, path, ref: t.branch });
+    return true;
+  } catch (e: unknown) {
+    if (isStatus(e, 404)) return false;
+    throw e;
+  }
+}
+
+// Fetch a file's UTF-8 text, or null if it doesn't exist.
+export async function getFileRaw(t: RepoTarget, path: string): Promise<string | null> {
+  try {
+    const { data } = await t.octokit.rest.repos.getContent({
       owner: t.owner,
       repo: t.repo,
       path,
       ref: t.branch,
     });
-    return true;
+    if (!Array.isArray(data) && "content" in data && typeof data.content === "string") {
+      return Buffer.from(data.content, "base64").toString("utf-8");
+    }
+    return null;
   } catch (e: unknown) {
-    if (isStatus(e, 404)) return false;
+    if (isStatus(e, 404)) return null;
     throw e;
   }
 }
@@ -45,9 +67,7 @@ export async function listGuideSlugs(t: RepoTarget): Promise<string[]> {
     });
     if (!Array.isArray(data)) return [];
     return data
-      .filter(
-        (it) => it.type === "file" && /\.ya?ml$/.test(it.name) && !it.name.startsWith("_"),
-      )
+      .filter((it) => it.type === "file" && /\.ya?ml$/.test(it.name) && !it.name.startsWith("_"))
       .map((it) => it.name.replace(/\.ya?ml$/, ""))
       .sort();
   } catch {
@@ -55,12 +75,59 @@ export async function listGuideSlugs(t: RepoTarget): Promise<string[]> {
   }
 }
 
-// Atomic multi-file commit via the Git Data API. Retries on 409 (non-fast-forward).
-export async function commitFiles(
+// Guides with light metadata for the manage list (newest first).
+export async function listGuidesWithMeta(t: RepoTarget): Promise<GuideMetaRow[]> {
+  const slugs = await listGuideSlugs(t);
+  const rows = await mapLimit(slugs, 8, async (slug): Promise<GuideMetaRow> => {
+    const raw = await getFileRaw(t, `content/${slug}.yaml`);
+    if (!raw) return { slug };
+    const d = (yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>) || {};
+    return {
+      slug,
+      series: typeof d.series === "string" ? d.series : undefined,
+      part: typeof d.part === "string" ? d.part : undefined,
+      date: d.date != null ? String(d.date) : undefined,
+      preacher: typeof d.preacher === "string" ? d.preacher : undefined,
+    };
+  });
+  rows.sort((a, b) => {
+    const da = String(a.date ?? "");
+    const db = String(b.date ?? "");
+    return db < da ? -1 : db > da ? 1 : 0;
+  });
+  return rows;
+}
+
+// Atomic commit: upsert files and/or delete paths in one commit. Retries on 409.
+export async function commitChanges(
   t: RepoTarget,
   message: string,
-  files: CommitFile[],
+  changes: { upserts?: CommitFile[]; deletes?: string[] },
 ): Promise<string> {
+  const upserts = changes.upserts ?? [];
+  const deletes = changes.deletes ?? [];
+  if (upserts.length === 0 && deletes.length === 0) {
+    throw new Error("commitChanges called with no changes");
+  }
+
+  type TreeItem = {
+    path: string;
+    mode: "100644";
+    type: "blob";
+    content?: string;
+    sha?: string | null;
+  };
+  const tree: TreeItem[] = [
+    ...upserts.map((f) => ({
+      path: f.path,
+      mode: "100644" as const,
+      type: "blob" as const,
+      content: f.content,
+    })),
+    // sha: null tells the Git Data API to delete the path.
+    ...deletes.map((p) => ({ path: p, mode: "100644" as const, type: "blob" as const, sha: null })),
+  ];
+
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -77,23 +144,18 @@ export async function commitFiles(
         commit_sha: parentSha,
       });
 
-      const { data: tree } = await t.octokit.rest.git.createTree({
+      const { data: newTree } = await t.octokit.rest.git.createTree({
         owner: t.owner,
         repo: t.repo,
         base_tree: baseCommit.tree.sha,
-        tree: files.map((f) => ({
-          path: f.path,
-          mode: "100644" as const,
-          type: "blob" as const,
-          content: f.content,
-        })),
+        tree,
       });
 
       const { data: commit } = await t.octokit.rest.git.createCommit({
         owner: t.owner,
         repo: t.repo,
         message,
-        tree: tree.sha,
+        tree: newTree.sha,
         parents: [parentSha],
       });
 
@@ -113,6 +175,28 @@ export async function commitFiles(
     }
   }
   throw lastErr;
+}
+
+// Backwards-compatible wrapper (upserts only) for the publish route.
+export async function commitFiles(
+  t: RepoTarget,
+  message: string,
+  files: CommitFile[],
+): Promise<string> {
+  return commitChanges(t, message, { upserts: files });
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) || 1 }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      results[idx] = await fn(items[idx]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 function isStatus(e: unknown, status: number): boolean {
