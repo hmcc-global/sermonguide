@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-// DELETE /api/inbox/<id> — dismiss an item without publishing (removes the pair).
+// DELETE /api/inbox/<id> — delete an item without publishing (removes the pair).
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   if (!checkPasscode(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,10 +42,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     if (deletes.length === 0) {
       return NextResponse.json({ ok: true }); // already gone — nothing to do
     }
-    await commitChanges(target, `inbox: dismiss '${id}'`, { deletes });
+    await commitChanges(target, `inbox: delete '${id}'`, { deletes });
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : "Could not dismiss the transcript";
+    const message = e instanceof Error ? e.message : "Could not delete the transcript";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

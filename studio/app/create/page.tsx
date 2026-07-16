@@ -223,9 +223,9 @@ export default function Page() {
     }
   }
 
-  // Remove a delivered transcript without publishing it.
-  async function dismissInboxItem(row: InboxRow) {
-    if (!window.confirm(`Dismiss "${row.title}"? It will be removed from the inbox.`)) return;
+  // Delete a delivered transcript without publishing it.
+  async function deleteInboxItem(row: InboxRow) {
+    if (!window.confirm(`Delete "${row.title}"? It will be removed from the inbox.`)) return;
     setError(null);
     setInboxBusy(row.id);
     try {
@@ -234,11 +234,11 @@ export default function Page() {
         headers: { "x-app-passcode": passcode },
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Could not dismiss that transcript");
+      if (!res.ok) throw new Error(data.error || "Could not delete that transcript");
       setInbox((list) => list.filter((it) => it.id !== row.id));
       if (inboxId === row.id) setInboxId(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not dismiss that transcript");
+      setError(e instanceof Error ? e.message : "Could not delete that transcript");
     } finally {
       setInboxBusy(null);
     }
@@ -464,10 +464,10 @@ export default function Page() {
                     </div>
                     <button
                       className="secondary"
-                      onClick={() => void dismissInboxItem(row)}
+                      onClick={() => void deleteInboxItem(row)}
                       disabled={inboxBusy !== null}
                     >
-                      Dismiss
+                      Delete
                     </button>
                     <button onClick={() => void useInboxItem(row)} disabled={inboxBusy !== null}>
                       {inboxBusy === row.id && <span className="spinner" />}
@@ -477,7 +477,7 @@ export default function Page() {
                 ))}
               </div>
               <p className="muted" style={{ marginTop: 8 }}>
-                Picking one loads its transcript below and fills the date. Dismiss removes it without
+                Picking one loads its transcript below and fills the date. Delete removes it without
                 publishing.
               </p>
             </div>
