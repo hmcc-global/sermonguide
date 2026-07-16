@@ -6,7 +6,7 @@ import { fileExists, getFileRaw, type RepoTarget } from "./github";
 // the same id, mirroring how content/<slug>.yaml and transcripts/<slug>.md pair up:
 //   inbox/<id>.vtt   — the raw transcript
 //   inbox/<id>.json  — sidecar metadata (title, date, source, …)
-// Publishing a guide (or dismissing) deletes the pair; the transcript survives as
+// Publishing a guide (or deleting) removes the pair; the transcript survives as
 // transcripts/<slug>.md, so nothing is lost.
 
 export const INBOX_DIR = "inbox";
