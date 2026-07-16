@@ -1,7 +1,8 @@
 import { GoogleGenAI, FileState, createPartFromUri, type Part } from "@google/genai";
 import type { GuideMeta, GuideContent } from "@/lib/guide";
 
-const MODEL = "gemini-2.5-flash";
+// Rolling alias that tracks the current Flash model, overridable without a code change.
+const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
 
 const INSTRUCTIONS = `You turn a church sermon into a structured small-group study guide for HMCC (Harvest Mission Community Church).
 
@@ -59,10 +60,8 @@ export async function generateGuideFromTranscript(
     contents: prompt,
     config: {
       responseMimeType: "application/json",
-      maxOutputTokens: 8192,
-      temperature: 0.4,
-      thinkingConfig: { thinkingBudget: 0 },
-    },
+      maxOutputTokens: 16384,
+      temperature: 0.4,    },
   });
   const raw = res.text;
   if (!raw) throw new Error("Gemini returned an empty response");
@@ -138,10 +137,8 @@ async function streamGuide(
     contents: [{ role: "user", parts: [{ text: guidePrompt(meta) }, audioPart] }],
     config: {
       responseMimeType: "application/json",
-      maxOutputTokens: 8192,
-      temperature: 0.4,
-      thinkingConfig: { thinkingBudget: 0 },
-    },
+      maxOutputTokens: 16384,
+      temperature: 0.4,    },
   });
   let text = "";
   for await (const chunk of stream) {
@@ -157,9 +154,7 @@ async function streamTranscript(ai: GoogleGenAI, audioPart: Part): Promise<strin
     contents: [{ role: "user", parts: [{ text: TRANSCRIBE_PROMPT }, audioPart] }],
     config: {
       maxOutputTokens: 65536,
-      temperature: 0,
-      thinkingConfig: { thinkingBudget: 0 },
-    },
+      temperature: 0,    },
   });
   let text = "";
   for await (const chunk of stream) {
