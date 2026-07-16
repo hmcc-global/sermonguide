@@ -69,6 +69,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ slug, commitSha, liveUrl });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Publish failed";
+    const status = (e as { status?: number })?.status;
+    if (status === 404) {
+      return NextResponse.json(
+        {
+          error: `GitHub returned 404 for ${target.owner}/${target.repo}@${target.branch}. Check that GITHUB_OWNER (${target.owner}), GITHUB_REPO (${target.repo}), and GITHUB_BRANCH (${target.branch}) are exactly right with no typos or trailing spaces, that "${target.branch}" is a real branch, and that GITHUB_TOKEN has Contents: write access to this repo. Redeploy after any env change.`,
+        },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
