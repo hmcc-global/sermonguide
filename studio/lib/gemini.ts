@@ -19,12 +19,11 @@ The title, date, scripture, and preacher are handled separately, so you write ON
   "next_steps": string[]        // exactly 3 concrete action items
 }
 
-RECAP (exactly 4 paragraphs, ~350-450 words TOTAL):
-- Write a warm, clear narrative, like explaining the sermon to a friend who missed Sunday. Not bullet points, not an outline.
-- Refer to the speaker by name throughout as "Pastor [Firstname]" (e.g., "Pastor Josh"), never "the pastor."
-- Weave in: the sermon's place in any larger series; the primary Scripture passage and what was drawn from it; the key illustrations, stories, and real-life examples (include enough detail that someone who wasn't there can follow along); and the practical throughline connecting it all.
-- Include Scripture references (e.g., "Song of Songs 4:12-5:1", "2 Timothy 3:16") but do not over-quote; paraphrase naturally. Do NOT reproduce the full passage text (the site adds it).
-- Be ruthless about length. This is a summary, not a transcript. Hit the main points and move on. Do not exceed ~450 words no matter how long the source is.
+RECAP — EXACTLY 4 paragraphs, 350-450 words TOTAL. Never write a 5th paragraph and never exceed 450 words:
+- A warm, clear narrative, like explaining the sermon to a friend who missed Sunday. Not bullets, not an outline.
+- Say "Pastor [Firstname]" every time you name the speaker (e.g., "Pastor Josh"). Never bare "Josh", never "the pastor."
+- Rough shape: (1) the series and how the preacher framed the book/passage; (2) and (3) walking through the passage, its imagery and interpretation, and the main points with their key illustrations; (4) the central application and conclusion.
+- Be RUTHLESS about length: keep only the most memorable illustrations and cut the rest to stay within 4 paragraphs and 450 words. Include Scripture references (e.g., "Song of Songs 4:12-5:1") but paraphrase; never reproduce the full passage text (the site adds it).
 
 ONE THING: The sermon's core takeaway as a single sentence. If the speaker stated a "one thing" or bottom line, use it; otherwise distill one.
 
@@ -34,11 +33,16 @@ WRITING STYLE (this is what separates a good guide from an AI-sounding one):
 - Write like a person: vary sentence length, let some sentences be short, do not over-qualify.
 - AVOID these AI hallmarks: transitional hype ("the second half turns urgent", "sobering territory"); commentary on the pastor's delivery or skill ("Pastor X got personal here", "made the point plainly", "found real treasure in it") — use neutral framing like "Pastor X reminded us that...", "noted that...", "shared from his own life..."; dramatic parallel sentence pairs; repeated "X and Y" couplets ("truth and love" over and over); throat-clearing openers ("This week, Pastor X turned to..."); filler affirmations ("a powerful reminder", "a striking question"); meta-commentary on the sermon's structure.
 
-DISCUSSION QUESTIONS (exactly 2 per category, short and direct, one sentence ideal, never compound/multi-part):
-- Connecting: lighthearted conversation warm-ups that are thought-provoking but IMPERSONAL. Anyone can answer without feeling exposed. No personal memories or vulnerability here. (e.g., "What comes to mind when you hear the phrase 'salt and light'?")
-- Considering: observation/interpretation questions about the Scripture text itself. Point people to the passage; ask what it says, warns, or commands. Do NOT reference the pastor or what they said. (e.g., "In Song of Songs 4:12-5:1, what does the imagery of a locked garden communicate about the relationship?")
-- Confessing: invite honest personal reflection; where does the message hit home or expose a struggle. One honest question, not compound.
-- Committing: push toward specific, actionable commitment ("who is one person...", "what is one step..."), never vague ("how can you be better?").
+DISCUSSION QUESTIONS (exactly 2 per category). HARD RULES for EVERY question:
+- ONE sentence, roughly 10-25 words. Never compound: no "and how...", no second question mark, no "Explain." at the end. Ask exactly one thing.
+- NEVER name the speaker ("Pastor Josh", "Josh") or cite scholars/quotes in a question. Questions are for the group to answer, not a recap of the sermon.
+- Connecting: lighthearted and IMPERSONAL. Anyone can answer without sharing anything personal or vulnerable, and without having heard the sermon. (Good: "What comes to mind when you hear the phrase 'God's design for sex'?")
+- Considering: about the Scripture TEXT only. Point to the passage; ask what it says, pictures, warns, or commands. Never mention the pastor, the sermon, or scholars. (Good: "In Song of Songs 4:12-15, what does the locked-garden imagery suggest about the relationship?")
+- Confessing: one honest, inward question about where this hits home. (Good: "Where do you fear that being fully known would make you less loved?")
+- Committing: one specific, doable step ("Who is one person...", "What is one step this week..."). Never vague like "How can you be better?"
+Example of a BAD question (too long, compound, names the pastor) -> its FIX:
+BAD: "Pastor Josh shared his fear of opening up to his wife on the drive from Chicago because of his past sins. In what areas of your life do you hide behind emotional barriers out of fear that your shame will be exposed?"
+FIX: "Where do you hide behind emotional barriers for fear your shame would be exposed?"
 
 NEXT STEPS (exactly 3): practical action items drawn directly from the sermon, each one short line. If the pastor gave explicit challenges or action steps, use those rather than inventing new ones.
 
