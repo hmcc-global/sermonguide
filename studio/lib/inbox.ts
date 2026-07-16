@@ -1,5 +1,5 @@
 import { slugify } from "./guide";
-import { fileExists, getFileRaw, type RepoTarget } from "./github";
+import { fileExists, getFileRaw, mapLimit, type RepoTarget } from "./github";
 
 // A staging area for transcripts delivered by SermonClipper (or anything else)
 // before a leader turns them into a guide. Each item is a pair of files keyed by
@@ -24,11 +24,17 @@ export type InboxMeta = {
 export type InboxRow = InboxMeta & { id: string };
 export type InboxItem = { id: string; meta: InboxMeta; vtt: string };
 
-// id = "<date>-<slug(title)>", e.g. "2026-07-13-adore-part-5". Falls back to a
-// title-only slug when no date is given. Always matches isValidInboxId().
-export function makeInboxId(title: string, date?: string): string {
+// id = "<date>-<slug(title)>[-<jobid>]", e.g. "2026-07-13-adore-part-5-a1b2c3d4".
+// The sourceJobId suffix (when present) keeps two different sermons that share a
+// date+title from colliding, while a re-delivery of the SAME job stays idempotent
+// (same id → overwrites its own item rather than duplicating). Always matches
+// isValidInboxId().
+export function makeInboxId(title: string, date?: string, sourceJobId?: string): string {
   const base = [date, title].filter((s) => s && s.trim()).join(" ");
-  return slugify(base);
+  let id = slugify(base);
+  const suffix = sourceJobId ? slugify(sourceJobId).slice(-8) : "";
+  if (suffix) id = `${id}-${suffix}`;
+  return id;
 }
 
 // Guards the id coming from a URL path segment against traversal / odd input.
@@ -63,20 +69,19 @@ export async function listInbox(t: RepoTarget): Promise<InboxRow[]> {
     .filter((it) => it.type === "file" && it.name.endsWith(".json"))
     .map((it) => it.name.replace(/\.json$/, ""));
 
-  const rows = await Promise.all(
-    ids.map(async (id): Promise<InboxRow> => {
-      const raw = await getFileRaw(t, `${INBOX_DIR}/${id}.json`);
-      let meta: InboxMeta = { title: id };
-      if (raw) {
-        try {
-          meta = JSON.parse(raw) as InboxMeta;
-        } catch {
-          /* keep the fallback */
-        }
+  // Bounded fan-out: each sidecar is a separate GitHub API call, so cap concurrency.
+  const rows = await mapLimit(ids, 8, async (id): Promise<InboxRow> => {
+    const raw = await getFileRaw(t, `${INBOX_DIR}/${id}.json`);
+    let meta: InboxMeta = { title: id };
+    if (raw) {
+      try {
+        meta = JSON.parse(raw) as InboxMeta;
+      } catch {
+        /* keep the fallback */
       }
-      return { id, ...meta, title: meta.title || id };
-    }),
-  );
+    }
+    return { id, ...meta, title: meta.title || id };
+  });
 
   rows.sort((a, b) => {
     const ka = String(a.receivedAt ?? a.date ?? "");

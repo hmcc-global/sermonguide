@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkAdminPasscode } from "@/lib/auth";
 import { commitChanges, fileExists, makeOctokit } from "@/lib/github";
+import { isValidSlug } from "@/lib/guide";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
 
   const slug = body.slug?.trim();
   if (!slug) return NextResponse.json({ error: "slug is required" }, { status: 400 });
+  if (!isValidSlug(slug)) return NextResponse.json({ error: "Invalid slug" }, { status: 400 });
 
   let target;
   try {

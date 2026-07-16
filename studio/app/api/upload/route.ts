@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { secretsMatch } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -20,8 +21,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       body,
       request: req,
       onBeforeGenerateToken: async (_pathname, clientPayload) => {
-        const expected = process.env.APP_PASSCODE;
-        if (!expected || clientPayload !== expected) {
+        if (!secretsMatch(clientPayload, process.env.APP_PASSCODE)) {
           throw new Error("Unauthorized");
         }
         return {
