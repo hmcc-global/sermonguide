@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { upload } from "@vercel/blob/client";
+import { Field, AutoTextarea } from "@/components/fields";
 
 type Stage = "input" | "working" | "review";
 type Mode = "audio" | "paste";
@@ -130,6 +131,11 @@ export default function Page() {
   const [inboxBusy, setInboxBusy] = useState<string | null>(null);
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [revisionNotes, setRevisionNotes] = useState("");
+  const [regenerating, setRegenerating] = useState(false);
+  // One level of undo. Regenerating replaces every field, so without this a
+  // stray click loses whatever the editor had already fixed by hand.
+  const [undoDraft, setUndoDraft] = useState<Draft | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("studio_passcode");
@@ -344,6 +350,46 @@ export default function Page() {
     }
   }
 
+  // Send the draft as it currently stands, edits included, so Gemini revises it
+  // rather than generating a fresh guide from the transcript.
+  async function onRegenerate() {
+    const notes = revisionNotes.trim();
+    if (!notes) return setError("Describe the changes you want first.");
+    if (!transcript.trim()) {
+      return setError("There's no transcript to regenerate from.");
+    }
+    setError(null);
+    setRegenerating(true);
+    const before = draft;
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-app-passcode": passcode },
+        body: JSON.stringify({
+          transcript,
+          meta: metaOut(),
+          revisionNotes: notes,
+          previousGuide: contentOut(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Regeneration failed");
+      fillDraft(data.guide || {});
+      setUndoDraft(before);
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Regeneration failed");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  function undoRegenerate() {
+    if (!undoDraft) return;
+    setDraft(undoDraft);
+    setUndoDraft(null);
+  }
+
   async function onPublish(confirmOverwrite = false) {
     setError(null);
     setPublishing(true);
@@ -388,6 +434,8 @@ export default function Page() {
     setResult(null);
     setError(null);
     setInboxId(null);
+    setRevisionNotes("");
+    setUndoDraft(null);
   }
 
   const slug = meta.series.trim() ? slugify(`${meta.series} ${meta.part}`.trim()) : "";
@@ -583,11 +631,11 @@ export default function Page() {
                   Transcript
                   {inboxId && <span className="hint"> — loaded from the inbox</span>}
                 </label>
-                <textarea
+                <AutoTextarea
+                  className="ta-lg"
                   value={transcript}
-                  onChange={(e) => setTranscript(e.target.value)}
+                  onValueChange={setTranscript}
                   placeholder="Paste the sermon transcript here…"
-                  style={{ minHeight: 220 }}
                 />
               </div>
             )}
@@ -627,12 +675,54 @@ export default function Page() {
             </div>
           )}
 
+          <div className="card revise">
+            <Field label="Ask for changes">
+              <AutoTextarea
+                className="ta-md"
+                value={revisionNotes}
+                onValueChange={setRevisionNotes}
+                disabled={regenerating}
+                placeholder={
+                  "Describe what you want different, in your own words. For example:\n\n" +
+                  "Make the recap warmer and cut the third paragraph down. The Connecting " +
+                  "questions are too personal, keep them light. Add a next step about " +
+                  "inviting someone to Life Group."
+                }
+              />
+            </Field>
+            <p className="muted">
+              Rewrites the draft below with these changes, keeping everything you haven&apos;t
+              asked to change, including your own edits.
+            </p>
+            <div className="actions">
+              <button
+                className="secondary"
+                onClick={() => void onRegenerate()}
+                disabled={regenerating || publishing || !revisionNotes.trim() || !transcript.trim()}
+              >
+                {regenerating && <span className="spinner" />}
+                {regenerating ? "Regenerating…" : "Regenerate draft"}
+              </button>
+              {undoDraft && !regenerating && (
+                <button className="secondary" onClick={undoRegenerate}>
+                  Undo
+                </button>
+              )}
+            </div>
+            {!transcript.trim() && (
+              <p className="muted">
+                Regenerating needs the transcript, which isn&apos;t available for this guide. Edit
+                the fields below by hand, or go back and try again.
+              </p>
+            )}
+          </div>
+
           <div className="card">
             <Field label="Recap (paragraphs, blank line between)">
-              <textarea
+              <AutoTextarea
+                className="ta-md"
                 value={draft.recap}
-                onChange={(e) => setDraftField("recap", e.target.value)}
-                style={{ minHeight: 140 }}
+                onValueChange={(v) => setDraftField("recap", v)}
               />
             </Field>
             <Field label="One thing">
@@ -647,27 +737,27 @@ export default function Page() {
           <div className="card">
             <label style={{ marginBottom: 12 }}>Discussion questions (one per line)</label>
             <Field label="Connecting">
-              <textarea
+              <AutoTextarea
                 value={draft.connecting}
-                onChange={(e) => setDraftField("connecting", e.target.value)}
+                onValueChange={(v) => setDraftField("connecting", v)}
               />
             </Field>
             <Field label="Considering">
-              <textarea
+              <AutoTextarea
                 value={draft.considering}
-                onChange={(e) => setDraftField("considering", e.target.value)}
+                onValueChange={(v) => setDraftField("considering", v)}
               />
             </Field>
             <Field label="Confessing">
-              <textarea
+              <AutoTextarea
                 value={draft.confessing}
-                onChange={(e) => setDraftField("confessing", e.target.value)}
+                onValueChange={(v) => setDraftField("confessing", v)}
               />
             </Field>
             <Field label="Committing">
-              <textarea
+              <AutoTextarea
                 value={draft.committing}
-                onChange={(e) => setDraftField("committing", e.target.value)}
+                onValueChange={(v) => setDraftField("committing", v)}
               />
             </Field>
           </div>
@@ -681,9 +771,9 @@ export default function Page() {
               />
             </Field>
             <Field label="Next steps (one per line)">
-              <textarea
+              <AutoTextarea
                 value={draft.next_steps}
-                onChange={(e) => setDraftField("next_steps", e.target.value)}
+                onValueChange={(v) => setDraftField("next_steps", v)}
               />
             </Field>
           </div>
@@ -697,7 +787,7 @@ export default function Page() {
             </p>
           )}
 
-          <div className="actions" style={{ marginTop: 8 }}>
+          <div className="actions actions-sticky" style={{ marginTop: 8 }}>
             <button onClick={() => onPublish(false)} disabled={publishing}>
               {publishing && <span className="spinner" />}
               {publishing ? "Publishing…" : "Approve & publish"}
@@ -708,15 +798,6 @@ export default function Page() {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="field">
-      <label>{label}</label>
-      {children}
     </div>
   );
 }

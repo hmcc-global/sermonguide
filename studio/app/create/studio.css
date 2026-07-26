@@ -8,6 +8,7 @@
   --accent-soft: #e1f5ee;
   --danger: #a32d2d;
   --radius: 10px;
+  --gutter: clamp(1rem, 3vw, 1.25rem);
 }
 
 * {
@@ -24,10 +25,24 @@ body {
   line-height: 1.55;
 }
 
+html {
+  /* iOS Safari otherwise inflates text in landscape. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  /* A net, not a fix. Long slugs and URLs are wrapped at the source below. */
+  overflow-x: clip;
+  overflow-wrap: break-word;
+}
+
 .wrap {
   max-width: 820px;
   margin: 0 auto;
-  padding: 32px 20px 80px;
+  padding-block: 32px 80px;
+  padding-inline:
+    max(var(--gutter), env(safe-area-inset-left))
+    max(var(--gutter), env(safe-area-inset-right));
 }
 
 h1 {
@@ -64,27 +79,84 @@ label {
 }
 
 input[type="text"],
+input[type="password"],
 input[type="date"],
 textarea {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
-  font-size: 15px;
+  /* 16px is load-bearing: Safari iOS force-zooms the viewport on focus of any
+     field below it, and does not zoom back out afterwards. */
+  font-size: 16px;
   font-family: inherit;
   background: #fff;
   color: var(--text);
 }
 
-textarea {
-  resize: vertical;
-  min-height: 88px;
+input,
+textarea,
+select {
+  min-width: 0;
+  max-width: 100%;
 }
 
+/* WebKit will not shrink a native date control below its intrinsic width
+   (~150-190px), which overflows a narrow grid track on iOS. Dropping the
+   native appearance is what makes width:100% authoritative. The date picker
+   itself is unaffected — only the chrome. */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* appearance:none does not reach inside the control. On iOS the value lives in
+   these pseudo-elements, which carry their own intrinsic width and center the
+   text — so the field renders wider than its siblings and misaligned against
+   every other input on the page. Verified on an iPhone; invisible in Chromium. */
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+  min-width: 0;
+  margin: 0;
+}
+
+input[type="date"]::-webkit-datetime-edit {
+  padding: 0;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 110px;
+}
+
+/* Floors for the long-form fields. AutoTextarea grows past these as the draft
+   fills in; they only set how much room an empty field claims up front. */
+.ta-md { min-height: min(220px, 34vh); }
+
+/* Deliberately uncapped everywhere except the transcript. A 400-word recap
+   needs ~940px, which no phone can show — capping it just moves the problem
+   into a nested scroll area, and scrolling a field inside a scrolling page is
+   worse than a long page. Let the page scroll instead. */
+.ta-lg {
+  min-height: min(300px, 42vh);
+  /* The exception: a 6,000-word transcript would otherwise be a 30,000px page. */
+  max-height: 60vh;
+}
+
+/* Collapses to one column when the card is too narrow for two, with no media
+   query — the constraint is the card's width, not the viewport's. The
+   min(100%, …) wrapper is load-bearing: a bare minmax(15rem, 1fr) would itself
+   overflow any container narrower than 15rem. */
 .row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
   gap: 14px;
+}
+
+/* Releases the min-content floor a grid item otherwise imposes — this is what
+   stops the date control from stealing width from the field beside it. */
+.row > * {
+  min-width: 0;
 }
 
 .field {
@@ -92,6 +164,10 @@ textarea {
 }
 
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
   font-family: inherit;
   font-size: 15px;
   font-weight: 600;
@@ -114,6 +190,11 @@ button:disabled {
   cursor: not-allowed;
 }
 
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .error {
   background: #fcebeb;
   border: 1px solid #f0c0c0;
@@ -133,6 +214,11 @@ button:disabled {
   margin-bottom: 16px;
 }
 
+/* The published URL is rendered as its own link text and has no break points. */
+.ok a {
+  overflow-wrap: anywhere;
+}
+
 .muted {
   color: var(--muted);
   font-size: 13px;
@@ -140,9 +226,47 @@ button:disabled {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   margin-top: 8px;
+}
+
+/* Publishing otherwise means scrolling past four cards and the full preview to
+   reach the button. Kept off larger screens, where it isn't a problem. */
+@media (max-width: 640px) {
+  .actions-sticky {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--border);
+    margin-inline: calc(var(--gutter) * -1);
+    padding-block: 12px max(12px, env(safe-area-inset-bottom));
+    padding-inline: var(--gutter);
+  }
+
+  .actions-sticky button {
+    flex: 1 1 auto;
+  }
+}
+
+/* Tinted so it reads as an action on the draft below rather than one more
+   section of the draft itself. */
+.card.revise {
+  background: var(--accent-soft);
+  border-color: #b6e3d4;
+}
+
+.card.revise textarea {
+  background: #fff;
+}
+
+.card.revise .muted {
+  color: #2f6a58;
+  margin: 0 0 10px;
 }
 
 .preview {
@@ -199,11 +323,33 @@ button:disabled {
   }
 }
 
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Keep a loading signal, just not a rotating one. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: pulse 1.4s ease-in-out infinite;
+    border-top-color: var(--border);
+    background: var(--accent);
+  }
+
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 code {
   background: #f1efe8;
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 13px;
+  /* Slugs like adore-part-5-worship-with-presence have no natural break. */
+  overflow-wrap: anywhere;
 }
 
 .warn {
@@ -218,6 +364,7 @@ code {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 18px;
 }
@@ -228,6 +375,7 @@ button.tab {
   border: 1px solid var(--border);
   font-weight: 500;
   padding: 8px 14px;
+  min-height: 44px;
 }
 
 button.tab.active {
@@ -243,7 +391,8 @@ button.tab.active {
 }
 
 .chip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   background: #f1efe8;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -258,17 +407,27 @@ button.tab.active {
   color: var(--accent);
 }
 
+/* Grown only on touch devices, so desktop density is unchanged. */
+@media (pointer: coarse) {
+  .chip {
+    min-height: 44px;
+    padding-inline: 16px;
+  }
+}
+
 input[type="file"] {
   width: 100%;
-  font-size: 14px;
+  font-size: 16px;
   font-family: inherit;
 }
 
 /* ---- transcript inbox (delivered from SermonClipper) ---- */
 .inbox-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
+  gap: 4px 12px;
   margin-bottom: 10px;
 }
 
@@ -282,6 +441,7 @@ input[type="file"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  container-type: inline-size;
 }
 
 .inbox-item {
@@ -324,6 +484,31 @@ input[type="file"] {
   white-space: nowrap;
 }
 
+/* Side by side, the two buttons leave ~90px for the title — often less than the
+   first word. Stack instead, and let the title wrap. Container-based because
+   what matters is the card's width, not the viewport's. */
+@container (max-width: 26rem) {
+  .inbox-item {
+    flex-wrap: wrap;
+  }
+
+  .inbox-meta {
+    flex: 1 1 100%;
+  }
+
+  .inbox-item .t {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .inbox-item button {
+    flex: 1 1 auto;
+    min-height: 44px;
+    font-size: 14px;
+  }
+}
+
 .tab-badge {
   display: inline-block;
   min-width: 18px;
@@ -340,4 +525,57 @@ input[type="file"] {
 button.tab.active .tab-badge {
   background: var(--accent);
   color: #fff;
+}
+
+/* ---- published guide list (manage) ---- */
+
+/* Was a set of inline style objects on the row markup, which cannot carry a
+   media or container query — the rows could not respond at any width. */
+.guide-rows {
+  container-type: inline-size;
+}
+
+.guide-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.guide-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.guide-row-title {
+  font-weight: 600;
+}
+
+.guide-row .actions {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+.guide-row button.danger {
+  color: var(--danger);
+  border-color: #f0c0c0;
+}
+
+@container (max-width: 26rem) {
+  .guide-row {
+    flex-wrap: wrap;
+  }
+
+  .guide-row-main {
+    flex: 1 1 100%;
+  }
+
+  .guide-row .actions {
+    flex: 1 1 100%;
+  }
+
+  .guide-row .actions button {
+    flex: 1 1 auto;
+  }
 }

@@ -1,5 +1,9 @@
 import "./site.css";
+import type { Viewport } from "next";
 import type { ReactNode } from "react";
+
+// Matches the navy topbar, so mobile browser chrome blends into the page.
+export const viewport: Viewport = { themeColor: "#0c2966" };
 
 export default function SiteLayout({ children }: { children: ReactNode }) {
   const year = new Date().getFullYear();

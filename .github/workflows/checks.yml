@@ -1,0 +1,41 @@
+name: Checks
+
+# build.yml only runs on pushes to main, because it deploys to Pages. That
+# leaves pull requests unchecked, so the guards that matter before a merge —
+# stylesheet drift and a build that still succeeds — live here instead.
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # static/styles.css and studio/app/(site)/site.css render the same pages
+      # and must stay identical apart from their font variables. Catching drift
+      # here is the point — after a merge is too late.
+      - name: Check the reader stylesheets are in sync
+        run: python scripts/check_css_sync.py
+
+      # No key in CI: passages come from the committed content/.cache, falling
+      # back to scripture_passage in the YAML.
+      - name: Build the site
+        run: python build.py

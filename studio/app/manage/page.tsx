@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Field, AutoTextarea } from "@/components/fields";
 
 type Meta = { series: string; part: string; date: string; preacher: string; scripture: string };
 
@@ -367,10 +368,10 @@ export default function ManagePage() {
 
         <div className="card">
           <Field label="Recap (paragraphs, blank line between)">
-            <textarea
+            <AutoTextarea
+              className="ta-md"
               value={draft.recap}
-              onChange={(e) => setDraftField("recap", e.target.value)}
-              style={{ minHeight: 160 }}
+              onValueChange={(v) => setDraftField("recap", v)}
             />
           </Field>
           <Field label="One thing">
@@ -385,27 +386,27 @@ export default function ManagePage() {
         <div className="card">
           <label style={{ marginBottom: 12 }}>Discussion questions (one per line)</label>
           <Field label="Connecting">
-            <textarea
+            <AutoTextarea
               value={draft.connecting}
-              onChange={(e) => setDraftField("connecting", e.target.value)}
+              onValueChange={(v) => setDraftField("connecting", v)}
             />
           </Field>
           <Field label="Considering">
-            <textarea
+            <AutoTextarea
               value={draft.considering}
-              onChange={(e) => setDraftField("considering", e.target.value)}
+              onValueChange={(v) => setDraftField("considering", v)}
             />
           </Field>
           <Field label="Confessing">
-            <textarea
+            <AutoTextarea
               value={draft.confessing}
-              onChange={(e) => setDraftField("confessing", e.target.value)}
+              onValueChange={(v) => setDraftField("confessing", v)}
             />
           </Field>
           <Field label="Committing">
-            <textarea
+            <AutoTextarea
               value={draft.committing}
-              onChange={(e) => setDraftField("committing", e.target.value)}
+              onValueChange={(v) => setDraftField("committing", v)}
             />
           </Field>
         </div>
@@ -419,14 +420,14 @@ export default function ManagePage() {
             />
           </Field>
           <Field label="Next steps (one per line)">
-            <textarea
+            <AutoTextarea
               value={draft.next_steps}
-              onChange={(e) => setDraftField("next_steps", e.target.value)}
+              onValueChange={(v) => setDraftField("next_steps", v)}
             />
           </Field>
         </div>
 
-        <div className="actions">
+        <div className="actions actions-sticky">
           <button onClick={() => void save(false)} disabled={saving}>
             {saving && <span className="spinner" />}
             {saving ? "Saving…" : "Save changes"}
@@ -456,47 +457,39 @@ export default function ManagePage() {
           </p>
         )}
         {!loadingList && guides.length === 0 && <p className="muted">No guides found.</p>}
-        {guides.map((g) => (
-          <div
-            key={g.slug}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "12px 0",
-              borderTop: "1px solid var(--border)",
-            }}
-          >
-            <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-              <div style={{ fontWeight: 600 }}>
-                {g.series || g.slug}
-                {g.part ? ` — ${g.part}` : ""}
+        <div className="guide-rows">
+          {guides.map((g) => (
+            <div key={g.slug} className="guide-row">
+              <div className="guide-row-main">
+                <div className="guide-row-title">
+                  {g.series || g.slug}
+                  {g.part ? ` — ${g.part}` : ""}
+                </div>
+                <div className="muted">
+                  {[g.date, g.preacher].filter(Boolean).join(" · ")}
+                  {g.date || g.preacher ? " · " : ""}
+                  <code>{g.slug}</code>
+                </div>
               </div>
-              <div className="muted">
-                {[g.date, g.preacher].filter(Boolean).join(" · ")}
-                {g.date || g.preacher ? " · " : ""}
-                <code>{g.slug}</code>
+              <div className="actions">
+                <button
+                  className="secondary"
+                  onClick={() => void startEdit(g.slug)}
+                  disabled={busySlug === g.slug}
+                >
+                  Edit
+                </button>
+                <button
+                  className="secondary danger"
+                  onClick={() => void del(g.slug)}
+                  disabled={busySlug === g.slug}
+                >
+                  {busySlug === g.slug ? "…" : "Delete"}
+                </button>
               </div>
             </div>
-            <div className="actions" style={{ marginTop: 0 }}>
-              <button
-                className="secondary"
-                onClick={() => void startEdit(g.slug)}
-                disabled={busySlug === g.slug}
-              >
-                Edit
-              </button>
-              <button
-                className="secondary"
-                onClick={() => void del(g.slug)}
-                disabled={busySlug === g.slug}
-                style={{ color: "var(--danger)", borderColor: "#f0c0c0" }}
-              >
-                {busySlug === g.slug ? "…" : "Delete"}
-              </button>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       <div className="actions">
@@ -508,11 +501,3 @@ export default function ManagePage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="field">
-      <label>{label}</label>
-      {children}
-    </div>
-  );
-}
