@@ -584,10 +584,10 @@ export default function Page() {
                   {inboxId && <span className="hint"> — loaded from the inbox</span>}
                 </label>
                 <textarea
+                  className="ta-lg"
                   value={transcript}
                   onChange={(e) => setTranscript(e.target.value)}
                   placeholder="Paste the sermon transcript here…"
-                  style={{ minHeight: 220 }}
                 />
               </div>
             )}
@@ -630,9 +630,9 @@ export default function Page() {
           <div className="card">
             <Field label="Recap (paragraphs, blank line between)">
               <textarea
+                className="ta-md"
                 value={draft.recap}
                 onChange={(e) => setDraftField("recap", e.target.value)}
-                style={{ minHeight: 140 }}
               />
             </Field>
             <Field label="One thing">
@@ -697,7 +697,7 @@ export default function Page() {
             </p>
           )}
 
-          <div className="actions" style={{ marginTop: 8 }}>
+          <div className="actions actions-sticky" style={{ marginTop: 8 }}>
             <button onClick={() => onPublish(false)} disabled={publishing}>
               {publishing && <span className="spinner" />}
               {publishing ? "Publishing…" : "Approve & publish"}
