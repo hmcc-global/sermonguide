@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Field, AutoTextarea } from "@/components/fields";
 
 type Meta = { series: string; part: string; date: string; preacher: string; scripture: string };
 
@@ -367,10 +368,10 @@ export default function ManagePage() {
 
         <div className="card">
           <Field label="Recap (paragraphs, blank line between)">
-            <textarea
+            <AutoTextarea
               className="ta-md"
               value={draft.recap}
-              onChange={(e) => setDraftField("recap", e.target.value)}
+              onValueChange={(v) => setDraftField("recap", v)}
             />
           </Field>
           <Field label="One thing">
@@ -385,27 +386,27 @@ export default function ManagePage() {
         <div className="card">
           <label style={{ marginBottom: 12 }}>Discussion questions (one per line)</label>
           <Field label="Connecting">
-            <textarea
+            <AutoTextarea
               value={draft.connecting}
-              onChange={(e) => setDraftField("connecting", e.target.value)}
+              onValueChange={(v) => setDraftField("connecting", v)}
             />
           </Field>
           <Field label="Considering">
-            <textarea
+            <AutoTextarea
               value={draft.considering}
-              onChange={(e) => setDraftField("considering", e.target.value)}
+              onValueChange={(v) => setDraftField("considering", v)}
             />
           </Field>
           <Field label="Confessing">
-            <textarea
+            <AutoTextarea
               value={draft.confessing}
-              onChange={(e) => setDraftField("confessing", e.target.value)}
+              onValueChange={(v) => setDraftField("confessing", v)}
             />
           </Field>
           <Field label="Committing">
-            <textarea
+            <AutoTextarea
               value={draft.committing}
-              onChange={(e) => setDraftField("committing", e.target.value)}
+              onValueChange={(v) => setDraftField("committing", v)}
             />
           </Field>
         </div>
@@ -419,9 +420,9 @@ export default function ManagePage() {
             />
           </Field>
           <Field label="Next steps (one per line)">
-            <textarea
+            <AutoTextarea
               value={draft.next_steps}
-              onChange={(e) => setDraftField("next_steps", e.target.value)}
+              onValueChange={(v) => setDraftField("next_steps", v)}
             />
           </Field>
         </div>
@@ -500,11 +501,3 @@ export default function ManagePage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="field">
-      <label>{label}</label>
-      {children}
-    </div>
-  );
-}

@@ -110,17 +110,37 @@ input[type="date"] {
   appearance: none;
 }
 
-textarea {
-  resize: vertical;
-  min-height: 88px;
+/* appearance:none does not reach inside the control. On iOS the value lives in
+   these pseudo-elements, which carry their own intrinsic width and center the
+   text — so the field renders wider than its siblings and misaligned against
+   every other input on the page. Verified on an iPhone; invisible in Chromium. */
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+  min-width: 0;
+  margin: 0;
 }
 
-/* Sized against the viewport so the keyboard doesn't leave zero context. */
-.ta-md { min-height: min(160px, 26vh); }
-.ta-lg { min-height: min(220px, 32vh); }
+input[type="date"]::-webkit-datetime-edit {
+  padding: 0;
+}
 
-@supports (field-sizing: content) {
-  textarea { field-sizing: content; }
+textarea {
+  resize: vertical;
+  min-height: 110px;
+}
+
+/* Floors for the long-form fields. AutoTextarea grows past these as the draft
+   fills in; they only set how much room an empty field claims up front. */
+.ta-md { min-height: min(220px, 34vh); }
+
+/* Deliberately uncapped everywhere except the transcript. A 400-word recap
+   needs ~940px, which no phone can show — capping it just moves the problem
+   into a nested scroll area, and scrolling a field inside a scrolling page is
+   worse than a long page. Let the page scroll instead. */
+.ta-lg {
+  min-height: min(300px, 42vh);
+  /* The exception: a 6,000-word transcript would otherwise be a 30,000px page. */
+  max-height: 60vh;
 }
 
 /* Collapses to one column when the card is too narrow for two, with no media
@@ -231,6 +251,22 @@ button:disabled {
   .actions-sticky button {
     flex: 1 1 auto;
   }
+}
+
+/* Tinted so it reads as an action on the draft below rather than one more
+   section of the draft itself. */
+.card.revise {
+  background: var(--accent-soft);
+  border-color: #b6e3d4;
+}
+
+.card.revise textarea {
+  background: #fff;
+}
+
+.card.revise .muted {
+  color: #2f6a58;
+  margin: 0 0 10px;
 }
 
 .preview {

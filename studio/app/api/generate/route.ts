@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { del } from "@vercel/blob";
 import { checkPasscode } from "@/lib/auth";
-import { generateFromAudio, generateGuideFromTranscript } from "@/lib/gemini";
-import type { GuideMeta } from "@/lib/guide";
+import { generateFromAudio, generateGuideFromTranscript, MAX_REVISION_NOTES } from "@/lib/gemini";
+import type { GuideMeta, GuideContent } from "@/lib/guide";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // requires Fluid compute; audio + transcript can take 1-2 min
@@ -23,7 +23,29 @@ type GenerateBody = {
   transcript?: string; // Phase 1 path
   blobUrl?: string; // Phase 2 path (audio)
   mimeType?: string;
+  revisionNotes?: string; // Phase 3: revise an existing draft
+  previousGuide?: GuideContent;
 };
+
+// A revision needs both halves: what to change, and what to change. Missing
+// either one would quietly fall through to a plain regeneration and throw away
+// the editor's manual edits, so treat a half-specified revision as an error.
+function readRevision(
+  body: GenerateBody,
+): { ok: true; revision?: { notes: string; previous: GuideContent } } | { ok: false; error: string } {
+  const notes = (body.revisionNotes ?? "").trim();
+  const previous = body.previousGuide;
+
+  if (!notes && !previous) return { ok: true };
+  if (!notes) return { ok: false, error: "Describe the changes you want before regenerating." };
+  if (notes.length > MAX_REVISION_NOTES) {
+    return { ok: false, error: `Keep the requested changes under ${MAX_REVISION_NOTES} characters.` };
+  }
+  if (!previous || typeof previous !== "object" || !Array.isArray(previous.recap)) {
+    return { ok: false, error: "Missing the draft to revise." };
+  }
+  return { ok: true, revision: { notes, previous } };
+}
 
 export async function POST(req: NextRequest) {
   if (!checkPasscode(req)) {
@@ -40,6 +62,11 @@ export async function POST(req: NextRequest) {
   const meta = body.meta;
   if (!meta?.series?.trim()) {
     return NextResponse.json({ error: "Series is required" }, { status: 400 });
+  }
+
+  const revision = readRevision(body);
+  if (!revision.ok) {
+    return NextResponse.json({ error: revision.error }, { status: 400 });
   }
 
   try {
@@ -71,7 +98,10 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const guide = await generateGuideFromTranscript(transcript, meta);
+    // A revision always comes through here, never the audio path: by the time
+    // there is a draft to revise the transcript already exists, so there is no
+    // reason to re-upload and re-transcribe the audio.
+    const guide = await generateGuideFromTranscript(transcript, meta, revision.revision);
     return NextResponse.json({ guide, transcript, transcriptFailed: false });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Generation failed";
