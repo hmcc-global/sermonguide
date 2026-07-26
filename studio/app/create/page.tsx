@@ -3,9 +3,16 @@
 import { useEffect, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { Field, AutoTextarea } from "@/components/fields";
+import {
+  parseTranscript,
+  wordCount,
+  looksLikeCaptions,
+  MAX_TRANSCRIPT_BYTES,
+  TRANSCRIPT_ACCEPT,
+} from "@/lib/transcript";
 
 type Stage = "input" | "working" | "review";
-type Mode = "audio" | "paste";
+type Mode = "audio" | "file" | "paste";
 
 type Meta = {
   series: string;
@@ -131,6 +138,7 @@ export default function Page() {
   const [inboxBusy, setInboxBusy] = useState<string | null>(null);
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [transcriptSource, setTranscriptSource] = useState<string | null>(null);
   const [revisionNotes, setRevisionNotes] = useState("");
   const [regenerating, setRegenerating] = useState(false);
   // One level of undo. Regenerating replaces every field, so without this a
@@ -213,7 +221,10 @@ export default function Page() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load that transcript");
       setMode("paste");
-      setTranscript(typeof data.vtt === "string" ? data.vtt : "");
+      // Inbox items arrive as raw WebVTT. Without this the timestamps and cue
+      // numbers go straight to Gemini and fill the transcript box with noise.
+      setTranscript(typeof data.vtt === "string" ? parseTranscript(data.vtt) : "");
+      setTranscriptSource(null);
       const m = (data.meta ?? {}) as { date?: string; preacher?: string };
       setMeta((prev) => ({
         ...prev,
@@ -247,6 +258,39 @@ export default function Page() {
       setError(e instanceof Error ? e.message : "Could not delete that transcript");
     } finally {
       setInboxBusy(null);
+    }
+  }
+
+  // Read a .vtt/.srt/.txt into the transcript box. Parsing client-side keeps the
+  // generate path untouched — by the time we submit, this is indistinguishable
+  // from a pasted transcript.
+  async function onTranscriptFile(f: File | null) {
+    if (!f) return;
+    setError(null);
+    if (f.size > MAX_TRANSCRIPT_BYTES) {
+      return setError(
+        `That file is ${(f.size / (1024 * 1024)).toFixed(1)} MB. Transcripts should be under ${
+          MAX_TRANSCRIPT_BYTES / (1024 * 1024)
+        } MB — if you meant to upload audio, use the Upload audio tab.`,
+      );
+    }
+    try {
+      const raw = await f.text();
+      const text = parseTranscript(raw);
+      if (!text.trim()) {
+        return setError(`No transcript text found in "${f.name}".`);
+      }
+      setTranscript(text);
+      setInboxId(null);
+      setTranscriptSource(
+        `${f.name} — ${wordCount(text).toLocaleString()} words${
+          looksLikeCaptions(raw) ? ", timestamps removed" : ""
+        }`,
+      );
+      // Show what was loaded so it can be checked and edited before generating.
+      setMode("paste");
+    } catch {
+      setError(`Could not read "${f.name}". Make sure it's a text file, not a PDF or Word doc.`);
     }
   }
 
@@ -304,6 +348,7 @@ export default function Page() {
     if (!passcode) return "Enter the passcode first.";
     if (!meta.series.trim()) return "Series is required.";
     if (mode === "audio" && !file) return "Choose an audio file.";
+    if (mode === "file" && !transcript.trim()) return "Choose a transcript file first.";
     if (mode === "paste" && !transcript.trim()) return "Paste a transcript first.";
     return null;
   }
@@ -434,6 +479,7 @@ export default function Page() {
     setResult(null);
     setError(null);
     setInboxId(null);
+    setTranscriptSource(null);
     setRevisionNotes("");
     setUndoDraft(null);
   }
@@ -540,6 +586,12 @@ export default function Page() {
                 Upload audio
               </button>
               <button
+                className={mode === "file" ? "tab active" : "tab"}
+                onClick={() => setMode("file")}
+              >
+                Transcript file
+              </button>
+              <button
                 className={mode === "paste" ? "tab active" : "tab"}
                 onClick={() => setMode("paste")}
               >
@@ -625,12 +677,31 @@ export default function Page() {
                   </p>
                 )}
               </div>
+            ) : mode === "file" ? (
+              <div className="field">
+                <label>
+                  Transcript file <span className="hint">— .vtt, .srt or .txt</span>
+                </label>
+                <input
+                  type="file"
+                  accept={TRANSCRIPT_ACCEPT}
+                  onChange={(e) => void onTranscriptFile(e.target.files?.[0] ?? null)}
+                />
+                <p className="muted">
+                  Subtitle files have their timestamps and cue numbers stripped. The text lands in
+                  Paste transcript so you can check it before generating.
+                </p>
+              </div>
             ) : (
               <div className="field">
                 <label>
                   Transcript
                   {inboxId && <span className="hint"> — loaded from the inbox</span>}
+                  {!inboxId && transcriptSource && <span className="hint"> — from a file</span>}
                 </label>
+                {transcriptSource && !inboxId && (
+                  <p className="muted">{transcriptSource}</p>
+                )}
                 <AutoTextarea
                   className="ta-lg"
                   value={transcript}
