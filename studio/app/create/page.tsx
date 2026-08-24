@@ -84,6 +84,293 @@ function getCat(dq: Record<string, string[]>, name: string): string[] {
   return key ? dq[key] : [];
 }
 
+// ---- Markdown mode ---------------------------------------------------------
+//
+// Mirrors the format documented in docs/ADD-A-GUIDE.md and parsed by
+// scripts/guide_from_markdown.py (the "paste into a GitHub issue" path), so a
+// guide drafted here and one drafted as an issue are interchangeable:
+//
+//   # SERIES — Part N: Subtitle
+//   Date: 2026-06-22
+//   Scripture: Luke 1:46-55
+//   Preacher: Pastor Pete Dahlem
+//
+//   ## Recap
+//   First paragraph.
+//
+//   Second paragraph.
+//
+//   ## One Thing
+//   ...
+//   ## Discussion Questions
+//   ### Connecting
+//   - ...
+//   ## Next Steps
+//   - ...
+//
+// Markdown is only ever applied to the fields on "switch to Fields" — never
+// read live off the textarea — so Publish/Regenerate always act on `draft`,
+// never on unapplied markdown edits.
+
+function isMetaEmpty(m: Meta): boolean {
+  return !m.series.trim() && !m.part.trim() && !m.date.trim() && !m.preacher.trim() && !m.scripture.trim();
+}
+
+function isDraftEmpty(d: Draft): boolean {
+  return (
+    !d.recap.trim() &&
+    !d.one_thing.trim() &&
+    !d.connecting.trim() &&
+    !d.considering.trim() &&
+    !d.confessing.trim() &&
+    !d.committing.trim() &&
+    !d.next_steps_intro.trim() &&
+    !d.next_steps.trim()
+  );
+}
+
+function draftToMarkdown(meta: Meta, draft: Draft): string {
+  const series = meta.series.trim() || "Series";
+  const titleLine = meta.part.trim() ? `# ${series} — ${meta.part.trim()}` : `# ${series}`;
+  const out: string[] = [titleLine];
+  if (meta.date.trim()) out.push(`Date: ${meta.date.trim()}`);
+  if (meta.scripture.trim()) out.push(`Scripture: ${meta.scripture.trim()}`);
+  if (meta.preacher.trim()) out.push(`Preacher: ${meta.preacher.trim()}`);
+  out.push("");
+
+  out.push("## Recap");
+  out.push(paras(draft.recap).join("\n\n"));
+  out.push("");
+
+  out.push("## One Thing");
+  out.push(draft.one_thing.trim());
+  out.push("");
+
+  out.push("## Discussion Questions");
+  for (const [name, v] of [
+    ["Connecting", draft.connecting],
+    ["Considering", draft.considering],
+    ["Confessing", draft.confessing],
+    ["Committing", draft.committing],
+  ] as const) {
+    out.push(`### ${name}`);
+    const items = lines(v);
+    if (items.length) out.push(items.map((q) => `- ${q}`).join("\n"));
+  }
+  out.push("");
+
+  out.push("## Next Steps");
+  if (draft.next_steps_intro.trim()) out.push(draft.next_steps_intro.trim());
+  const steps = lines(draft.next_steps);
+  if (steps.length) out.push(steps.map((s) => `- ${s}`).join("\n"));
+
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+}
+
+// "SERIES — Part N: Subtitle" -> { series, part }. Accepts em dash, en dash, or
+// " - " as the separator, matching scripts/guide_from_markdown.py exactly so
+// the same title line parses the same way in both places.
+function splitTitleLine(title: string): { series: string; part: string } {
+  const m = title.match(/^(.*?)\s+[—–-]\s+(.*)$/);
+  if (m) return { series: m[1].trim(), part: m[2].trim() };
+  return { series: title.trim(), part: "" };
+}
+
+// Tolerates markdown emphasis around the label, e.g. "**Date:** ...".
+function headerField(headerText: string, name: string): string {
+  const re = new RegExp(`^\\s*[*_]*\\s*${name}\\s*[*_]*\\s*:\\s*[*_]*\\s*(.+?)\\s*[*_]*$`, "im");
+  const m = headerText.match(re);
+  return m ? m[1].trim() : "";
+}
+
+function normalizeDateLoose(raw: string): string | null {
+  const s = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${day}`;
+}
+
+// Splits a block into paragraphs on blank lines, collapsing internal
+// whitespace/newlines within each paragraph — standard markdown semantics,
+// and what scripts/guide_from_markdown.py does for the same input.
+function paragraphsFromBlock(block: string): string[] {
+  return block
+    .trim()
+    .split(/\n\s*\n/)
+    .map((chunk) => chunk.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
+}
+
+function listItemsFromBlock(block: string): string[] {
+  const items: string[] = [];
+  for (const line of block.split("\n")) {
+    const m = line.match(/^\s*[-*]\s+(.*)/);
+    if (m && m[1].trim()) items.push(m[1].trim());
+  }
+  return items;
+}
+
+// Maps each "## Heading" to the text beneath it (lower-cased keys). "###" is
+// excluded since it starts with "##" too.
+function markdownSections(body: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  let current: string | null = null;
+  let buf: string[] = [];
+  for (const line of body.split("\n")) {
+    if (/^##\s+/.test(line) && !line.startsWith("###")) {
+      if (current !== null) result[current] = buf.join("\n").trim();
+      current = line.replace(/^##\s+/, "").trim().toLowerCase();
+      buf = [];
+    } else if (current !== null) {
+      buf.push(line);
+    }
+  }
+  if (current !== null) result[current] = buf.join("\n").trim();
+  return result;
+}
+
+// Maps each "### Category" to its bullet list, preserving the heading's own case.
+function markdownSubsections(block: string): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  let current: string | null = null;
+  let buf: string[] = [];
+  for (const line of block.split("\n")) {
+    if (/^###\s+/.test(line)) {
+      if (current !== null) result[current] = listItemsFromBlock(buf.join("\n"));
+      current = line.replace(/^###\s+/, "").trim();
+      buf = [];
+    } else if (current !== null) {
+      buf.push(line);
+    }
+  }
+  if (current !== null) result[current] = listItemsFromBlock(buf.join("\n"));
+  for (const k of Object.keys(result)) if (!result[k].length) delete result[k];
+  return result;
+}
+
+const KNOWN_TOP_SECTIONS = ["recap", "one thing", "discussion questions", "next steps"];
+const KNOWN_CATEGORIES = ["connecting", "considering", "confessing", "committing"];
+
+type MarkdownParseResult =
+  | {
+      ok: true;
+      isBlank: boolean;
+      meta: { series: string; part: string; date?: string; preacher?: string; scripture?: string };
+      draft: Draft;
+      warnings: string[];
+    }
+  | { ok: false; error: string };
+
+function parseGuideMarkdown(raw: string): MarkdownParseResult {
+  const text = raw.replace(/\r\n/g, "\n").trim();
+  if (!text) {
+    return { ok: true, isBlank: true, meta: { series: "", part: "" }, draft: { ...EMPTY_DRAFT }, warnings: [] };
+  }
+
+  const titleMatch = text.match(/^#\s+(.+)$/m);
+  if (!titleMatch || titleMatch.index === undefined) {
+    return {
+      ok: false,
+      error:
+        'Couldn’t find the title line. The first line should start with "# " — for example: ' +
+        '"# ADORE — Part 5: Worship With Joy".',
+    };
+  }
+  const warnings: string[] = [];
+  if (text.slice(0, titleMatch.index).trim()) {
+    warnings.push('Text before the "# " title line isn’t recognized and won’t be imported.');
+  }
+
+  const { series, part } = splitTitleLine(titleMatch[1]);
+
+  const headerZone = text.slice(titleMatch.index + titleMatch[0].length);
+  const firstSectionMatch = headerZone.match(/^##\s+/m);
+  const headerText =
+    firstSectionMatch && firstSectionMatch.index !== undefined
+      ? headerZone.slice(0, firstSectionMatch.index)
+      : headerZone;
+
+  const dateRaw = headerField(headerText, "date");
+  const date = dateRaw ? normalizeDateLoose(dateRaw) : null;
+  if (dateRaw && !date) {
+    warnings.push(`Date "${dateRaw}" wasn’t recognized and was left as it was.`);
+  }
+  const scripture = headerField(headerText, "scripture");
+  const preacher = headerField(headerText, "preacher");
+
+  const knownLabel = /^\s*[*_]*\s*(date|scripture|preacher)\s*[*_]*\s*:/im;
+  if (headerText.split("\n").some((l) => l.trim() && !knownLabel.test(l))) {
+    warnings.push(
+      'Text between the title and the first "## " heading isn’t recognized and won’t be imported.',
+    );
+  }
+
+  const secs = markdownSections(text);
+  for (const key of Object.keys(secs)) {
+    if (!KNOWN_TOP_SECTIONS.includes(key)) {
+      warnings.push(`Section "## ${key}" isn’t a recognized heading and won’t be imported.`);
+    }
+  }
+
+  const recap = secs["recap"] ? paragraphsFromBlock(secs["recap"]) : [];
+  const oneThing = secs["one thing"] ? secs["one thing"].replace(/\s+/g, " ").trim() : "";
+
+  const dqBlock = secs["discussion questions"] ?? "";
+  const dqRaw = markdownSubsections(dqBlock);
+  for (const k of Object.keys(dqRaw)) {
+    if (!KNOWN_CATEGORIES.includes(k.toLowerCase())) {
+      warnings.push(
+        `Discussion category "### ${k}" isn’t Connecting/Considering/Confessing/Committing and won’t be imported.`,
+      );
+    }
+  }
+  const firstSub = dqBlock.match(/^###\s+/m);
+  const dqPreamble = firstSub && firstSub.index !== undefined ? dqBlock.slice(0, firstSub.index) : dqBlock;
+  if (dqPreamble.trim()) {
+    warnings.push(
+      'Text under "## Discussion Questions" before the first "### " category won’t be imported.',
+    );
+  }
+
+  const nextStepsBlock = secs["next steps"] ?? "";
+  const nextSteps = listItemsFromBlock(nextStepsBlock);
+  const introLines: string[] = [];
+  for (const line of nextStepsBlock.split("\n")) {
+    if (/^\s*[-*]\s+/.test(line)) break;
+    if (line.trim()) introLines.push(line.trim());
+  }
+
+  const draft: Draft = {
+    recap: recap.join("\n\n"),
+    one_thing: oneThing,
+    connecting: getCat(dqRaw, "connecting").join("\n"),
+    considering: getCat(dqRaw, "considering").join("\n"),
+    confessing: getCat(dqRaw, "confessing").join("\n"),
+    committing: getCat(dqRaw, "committing").join("\n"),
+    next_steps_intro: introLines.join(" "),
+    next_steps_title: "",
+    next_steps: nextSteps.join("\n"),
+  };
+
+  return {
+    ok: true,
+    isBlank: false,
+    meta: {
+      series,
+      part,
+      date: date ?? undefined,
+      preacher: preacher || undefined,
+      scripture: scripture || undefined,
+    },
+    draft,
+    warnings,
+  };
+}
+
 function fmtDate(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
@@ -151,6 +438,12 @@ export default function Page() {
   // One level of undo. Regenerating replaces every field, so without this a
   // stray click loses whatever the editor had already fixed by hand.
   const [undoDraft, setUndoDraft] = useState<Draft | null>(null);
+  // Markdown mode: `draft`/`meta` stay the source of truth. `markdownText` is a
+  // staging area, only merged back into them when switching to Fields — so
+  // Publish/Regenerate, which read `draft` directly, never see unapplied edits.
+  const [viewMode, setViewMode] = useState<"fields" | "markdown">("fields");
+  const [markdownText, setMarkdownText] = useState("");
+  const [markdownError, setMarkdownError] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("studio_passcode");
@@ -335,10 +628,10 @@ export default function Page() {
     };
   }
 
-  function fillDraft(g: Record<string, unknown>) {
+  function guideToDraft(g: Record<string, unknown>): Draft {
     const dq = (g.discussion_questions || {}) as Record<string, string[]>;
     const list = (v: unknown) => (Array.isArray(v) ? (v as string[]) : []);
-    setDraft({
+    return {
       recap: list(g.recap).join("\n\n"),
       one_thing: typeof g.one_thing === "string" ? g.one_thing : "",
       connecting: getCat(dq, "Connecting").join("\n"),
@@ -348,7 +641,70 @@ export default function Page() {
       next_steps_intro: typeof g.next_steps_intro === "string" ? g.next_steps_intro : "",
       next_steps_title: typeof g.next_steps_title === "string" ? g.next_steps_title : "",
       next_steps: list(g.next_steps).join("\n"),
-    });
+    };
+  }
+
+  function fillDraft(g: Record<string, unknown>) {
+    setDraft(guideToDraft(g));
+  }
+
+  // Serialize the current draft/meta into the markdown box. Fields stay the
+  // source of truth, so this always wins over whatever was in the box before.
+  function enterMarkdownMode() {
+    setMarkdownText(draftToMarkdown(meta, draft));
+    setMarkdownError(null);
+    setViewMode("markdown");
+  }
+
+  // Parse the markdown box and merge it back into draft/meta, then switch to
+  // Fields. Blocks (stays in Markdown) on a hard parse error, and confirms
+  // before applying anything that would drop content, so switching back and
+  // forth never silently loses text.
+  function applyMarkdownAndReturnToFields() {
+    const parsed = parseGuideMarkdown(markdownText);
+    if (!parsed.ok) {
+      setMarkdownError(parsed.error);
+      return;
+    }
+    setMarkdownError(null);
+
+    if (parsed.isBlank) {
+      const hasExisting = !isDraftEmpty(draft) || !isMetaEmpty(meta);
+      if (
+        hasExisting &&
+        !window.confirm("The markdown box is empty. Switching back will clear the guide fields. Continue?")
+      ) {
+        return;
+      }
+      setDraft((d) => ({ ...EMPTY_DRAFT, next_steps_title: d.next_steps_title }));
+      setViewMode("fields");
+      return;
+    }
+
+    if (parsed.warnings.length) {
+      const proceed = window.confirm(
+        `Some content couldn't be imported and will be lost if you continue:\n\n${parsed.warnings.join("\n")}\n\nSwitch to Fields anyway?`,
+      );
+      if (!proceed) return;
+    }
+
+    setDraft((d) => ({ ...parsed.draft, next_steps_title: d.next_steps_title }));
+    setMeta((m) => ({
+      ...m,
+      series: parsed.meta.series,
+      part: parsed.meta.part,
+      date: parsed.meta.date ?? m.date,
+      preacher: parsed.meta.preacher ?? m.preacher,
+      scripture: parsed.meta.scripture ?? m.scripture,
+    }));
+    setViewMode("fields");
+  }
+
+  // Abandon whatever is in the markdown box (e.g. it won't parse and the
+  // editor would rather start over) without touching draft/meta.
+  function discardMarkdownEdits() {
+    setMarkdownError(null);
+    setViewMode("fields");
   }
 
   function validate(): string | null {
@@ -366,6 +722,8 @@ export default function Page() {
     setError(null);
     setGenFailed(false);
     setTranscriptFailed(false);
+    setViewMode("fields");
+    setMarkdownError(null);
     setStage("working");
 
     try {
@@ -417,6 +775,8 @@ export default function Page() {
     setError(null);
     setGenFailed(false);
     setTranscriptFailed(false);
+    setViewMode("fields");
+    setMarkdownError(null);
     setStage("review");
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -445,8 +805,12 @@ export default function Page() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Regeneration failed");
-      fillDraft(data.guide || {});
+      const next = guideToDraft(data.guide || {});
+      setDraft(next);
       setUndoDraft(before);
+      // Regenerate button is disabled in Markdown mode, but stay defensive:
+      // Undo (below) can still land here, so keep the box from going stale.
+      if (viewMode === "markdown") setMarkdownText(draftToMarkdown(meta, next));
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Regeneration failed");
@@ -458,6 +822,7 @@ export default function Page() {
   function undoRegenerate() {
     if (!undoDraft) return;
     setDraft(undoDraft);
+    if (viewMode === "markdown") setMarkdownText(draftToMarkdown(meta, undoDraft));
     setUndoDraft(null);
   }
 
@@ -509,6 +874,9 @@ export default function Page() {
     setRevisionNotes("");
     setUndoDraft(null);
     setGenFailed(false);
+    setViewMode("fields");
+    setMarkdownText("");
+    setMarkdownError(null);
   }
 
   const slug = meta.series.trim() ? slugify(`${meta.series} ${meta.part}`.trim()) : "";
@@ -814,7 +1182,13 @@ export default function Page() {
               <button
                 className="secondary"
                 onClick={() => void onRegenerate()}
-                disabled={regenerating || publishing || !revisionNotes.trim() || !transcript.trim()}
+                disabled={
+                  regenerating ||
+                  publishing ||
+                  !revisionNotes.trim() ||
+                  !transcript.trim() ||
+                  viewMode === "markdown"
+                }
               >
                 {regenerating && <span className="spinner" />}
                 {regenerating ? "Regenerating…" : "Regenerate draft"}
@@ -831,80 +1205,140 @@ export default function Page() {
                 the fields below by hand, or go back and try again.
               </p>
             )}
+            {viewMode === "markdown" && (
+              <p className="muted">Switch to Fields to regenerate.</p>
+            )}
           </div>
 
           <div className="card">
-            <Field label="Recap (paragraphs, blank line between)">
-              <AutoTextarea
-                className="ta-md"
-                value={draft.recap}
-                onValueChange={(v) => setDraftField("recap", v)}
-              />
-            </Field>
-            <Field label="One thing">
-              <input
-                type="text"
-                value={draft.one_thing}
-                onChange={(e) => setDraftField("one_thing", e.target.value)}
-              />
-            </Field>
+            <div className="tabs">
+              <button
+                className={viewMode === "fields" ? "tab active" : "tab"}
+                onClick={() => {
+                  if (viewMode !== "fields") applyMarkdownAndReturnToFields();
+                }}
+              >
+                Fields
+              </button>
+              <button
+                className={viewMode === "markdown" ? "tab active" : "tab"}
+                onClick={() => {
+                  if (viewMode !== "markdown") enterMarkdownMode();
+                }}
+              >
+                Markdown
+              </button>
+            </div>
+
+            {viewMode === "markdown" && (
+              <>
+                {markdownError && (
+                  <div className="error">
+                    {markdownError}
+                    <div style={{ marginTop: 8 }}>
+                      <button className="secondary" onClick={discardMarkdownEdits}>
+                        Discard these edits and go back to Fields
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <Field label="Full guide (markdown)">
+                  <AutoTextarea
+                    className="ta-lg"
+                    value={markdownText}
+                    onValueChange={(v) => {
+                      setMarkdownText(v);
+                      setMarkdownError(null);
+                    }}
+                  />
+                </Field>
+                <p className="muted">
+                  Edits here apply to the fields when you switch back to Fields — Regenerate and
+                  Publish always use the Fields version. First line sets Series / Part, e.g.{" "}
+                  <code># ADORE — Part 5: Worship With Joy</code>; Date, Scripture, and Preacher
+                  lines are optional. Anything that doesn&apos;t match this format is flagged
+                  before it&apos;s applied, so nothing is silently dropped.
+                </p>
+              </>
+            )}
           </div>
 
-          <div className="card">
-            <label style={{ marginBottom: 12 }}>Discussion questions (one per line)</label>
-            <Field label="Connecting">
-              <AutoTextarea
-                value={draft.connecting}
-                onValueChange={(v) => setDraftField("connecting", v)}
-              />
-            </Field>
-            <Field label="Considering">
-              <AutoTextarea
-                value={draft.considering}
-                onValueChange={(v) => setDraftField("considering", v)}
-              />
-            </Field>
-            <Field label="Confessing">
-              <AutoTextarea
-                value={draft.confessing}
-                onValueChange={(v) => setDraftField("confessing", v)}
-              />
-            </Field>
-            <Field label="Committing">
-              <AutoTextarea
-                value={draft.committing}
-                onValueChange={(v) => setDraftField("committing", v)}
-              />
-            </Field>
-          </div>
+          {viewMode === "fields" && (
+            <>
+              <div className="card">
+                <Field label="Recap (paragraphs, blank line between)">
+                  <AutoTextarea
+                    className="ta-md"
+                    value={draft.recap}
+                    onValueChange={(v) => setDraftField("recap", v)}
+                  />
+                </Field>
+                <Field label="One thing">
+                  <input
+                    type="text"
+                    value={draft.one_thing}
+                    onChange={(e) => setDraftField("one_thing", e.target.value)}
+                  />
+                </Field>
+              </div>
 
-          <div className="card">
-            <Field label="Next steps intro (optional)">
-              <input
-                type="text"
-                value={draft.next_steps_intro}
-                onChange={(e) => setDraftField("next_steps_intro", e.target.value)}
-              />
-            </Field>
-            <Field label="Next steps (one per line)">
-              <AutoTextarea
-                value={draft.next_steps}
-                onValueChange={(v) => setDraftField("next_steps", v)}
-              />
-            </Field>
-          </div>
+              <div className="card">
+                <label style={{ marginBottom: 12 }}>Discussion questions (one per line)</label>
+                <Field label="Connecting">
+                  <AutoTextarea
+                    value={draft.connecting}
+                    onValueChange={(v) => setDraftField("connecting", v)}
+                  />
+                </Field>
+                <Field label="Considering">
+                  <AutoTextarea
+                    value={draft.considering}
+                    onValueChange={(v) => setDraftField("considering", v)}
+                  />
+                </Field>
+                <Field label="Confessing">
+                  <AutoTextarea
+                    value={draft.confessing}
+                    onValueChange={(v) => setDraftField("confessing", v)}
+                  />
+                </Field>
+                <Field label="Committing">
+                  <AutoTextarea
+                    value={draft.committing}
+                    onValueChange={(v) => setDraftField("committing", v)}
+                  />
+                </Field>
+              </div>
 
-          <Preview meta={meta} draft={draft} />
+              <div className="card">
+                <Field label="Next steps intro (optional)">
+                  <input
+                    type="text"
+                    value={draft.next_steps_intro}
+                    onChange={(e) => setDraftField("next_steps_intro", e.target.value)}
+                  />
+                </Field>
+                <Field label="Next steps (one per line)">
+                  <AutoTextarea
+                    value={draft.next_steps}
+                    onValueChange={(v) => setDraftField("next_steps", v)}
+                  />
+                </Field>
+              </div>
 
-          {slug && (
-            <p className="muted" style={{ marginTop: 12 }}>
-              Publishing to <code>content/{slug}.yaml</code>
-              {transcript.trim() ? ` and transcripts/${slug}.md` : ""}.
-            </p>
+              <Preview meta={meta} draft={draft} />
+
+              {slug && (
+                <p className="muted" style={{ marginTop: 12 }}>
+                  Publishing to <code>content/{slug}.yaml</code>
+                  {transcript.trim() ? ` and transcripts/${slug}.md` : ""}.
+                </p>
+              )}
+            </>
           )}
 
           <div className="actions actions-sticky" style={{ marginTop: 8 }}>
-            <button onClick={() => onPublish(false)} disabled={publishing}>
+            <button onClick={() => onPublish(false)} disabled={publishing || viewMode === "markdown"}>
               {publishing && <span className="spinner" />}
               {publishing ? "Publishing…" : "Approve & publish"}
             </button>
@@ -912,6 +1346,11 @@ export default function Page() {
               Back
             </button>
           </div>
+          {viewMode === "markdown" && (
+            <p className="muted" style={{ marginTop: 8 }}>
+              Switch to Fields to publish.
+            </p>
+          )}
         </>
       )}
     </div>
