@@ -104,6 +104,10 @@ function timeAgo(iso?: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function isRateLimitError(message: string): boolean {
+  return /429|quota|rate.?limit|resource_exhausted/i.test(message);
+}
+
 function describeInbox(row: InboxRow): string {
   const parts: string[] = [];
   if (row.date) parts.push(fmtDate(row.date));
@@ -141,6 +145,9 @@ export default function Page() {
   const [transcriptSource, setTranscriptSource] = useState<string | null>(null);
   const [revisionNotes, setRevisionNotes] = useState("");
   const [regenerating, setRegenerating] = useState(false);
+  // Set only when onGenerate's own API call fails, so the "fill in by hand"
+  // callout doesn't also show up for unrelated errors (bad passcode, etc.).
+  const [genFailed, setGenFailed] = useState(false);
   // One level of undo. Regenerating replaces every field, so without this a
   // stray click loses whatever the editor had already fixed by hand.
   const [undoDraft, setUndoDraft] = useState<Draft | null>(null);
@@ -357,6 +364,7 @@ export default function Page() {
     const v = validate();
     if (v) return setError(v);
     setError(null);
+    setGenFailed(false);
     setTranscriptFailed(false);
     setStage("working");
 
@@ -391,8 +399,26 @@ export default function Page() {
       setStage("review");
     } catch (e) {
       setStage("input");
-      setError(e instanceof Error ? e.message : "Generation failed");
+      setGenFailed(true);
+      const message = e instanceof Error ? e.message : "Generation failed";
+      setError(
+        isRateLimitError(message)
+          ? "Gemini's free-tier limit was hit. Wait a bit and try again, or fill in the guide yourself below."
+          : message,
+      );
     }
+  }
+
+  // Skip Gemini entirely and drop straight into the editable review form, e.g.
+  // when the free API limit is blocking generation. Meta stays as already
+  // entered; the transcript (if any) is kept but nothing requires it — the
+  // revise card already handles a missing transcript.
+  function startManual() {
+    setError(null);
+    setGenFailed(false);
+    setTranscriptFailed(false);
+    setStage("review");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   // Send the draft as it currently stands, edits included, so Gemini revises it
@@ -482,6 +508,7 @@ export default function Page() {
     setTranscriptSource(null);
     setRevisionNotes("");
     setUndoDraft(null);
+    setGenFailed(false);
   }
 
   const slug = meta.series.trim() ? slugify(`${meta.series} ${meta.part}`.trim()) : "";
@@ -522,7 +549,18 @@ export default function Page() {
       <h1>Sermon Guide Studio</h1>
       <p className="sub">Upload a sermon, review the generated guide, and publish it live.</p>
 
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <div className="error">
+          {error}
+          {genFailed && stage === "input" && (
+            <div style={{ marginTop: 10 }}>
+              <button className="secondary" onClick={startManual}>
+                Fill in the guide by hand instead
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {result && (
         <div className="ok">
@@ -712,7 +750,14 @@ export default function Page() {
             )}
             <div className="actions">
               <button onClick={onGenerate}>Generate guide</button>
+              <button className="secondary" onClick={startManual}>
+                Write it myself
+              </button>
             </div>
+            <p className="muted" style={{ marginTop: 8 }}>
+              Hitting Gemini&apos;s free API limit? &quot;Write it myself&quot; opens the same
+              editable fields without calling Gemini.
+            </p>
           </div>
 
           {guides.length > 0 && (
