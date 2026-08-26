@@ -58,6 +58,100 @@ const EMPTY_DRAFT: Draft = {
   next_steps: "",
 };
 
+// Copied verbatim, unmodified, for the "Copy prompt for another AI" button —
+// lets an editor run generation in their own AI (ChatGPT, Claude, etc.) when
+// Gemini's free tier is unavailable, then paste the markdown result into
+// Markdown mode.
+const EXTERNAL_AI_PROMPT = `You are creating a sermon summary and Bible study discussion guide from a sermon transcript, notes, or outline. The output is clean, copy-pastable markdown that works equally well for individual study and small group facilitation.
+Read the input carefully and identify: the sermon title, the speaker/pastor's name, the primary Scripture passage(s), the main theme or "one thing" takeaway, key illustrations or stories, and any explicit calls to action.
+Produce the output as markdown using this EXACT structure, headings, ordering, and bullet style:
+
+\`\`\`
+# SERIES — Part N: Subtitle
+Date: YYYY-MM-DD
+Scripture: [primary passage reference]
+Preacher: [Pastor Name]
+## Recap
+First paragraph.
+
+Second paragraph.
+
+Third paragraph.
+
+Fourth paragraph.
+## One Thing
+The single biggest takeaway, in one sentence.
+## Discussion Questions
+### Connecting
+- An opening, low-stakes question?
+- Another connecting question?
+### Considering
+- An observational/analytical question about the text?
+- An observational/analytical question about the text?
+### Confessing
+- A question that surfaces personal struggle?
+- A question that surfaces personal struggle?
+### Committing
+- A question about what to do this week?
+- A question about what to do this week?
+## Next Steps
+- First concrete step.
+- Second step.
+- Third step.
+
+\`\`\`
+
+Formatting rules:
+
+* Title line: Use \`# SERIES — Part N: Subtitle\` when the sermon is part of a numbered series (e.g., \`# BIBLE SHORTS — Part 6: Jude\`), with the series name in caps. The em dash in this title line is the ONLY em dash permitted in the entire output. If it is not part of a series, use the sermon title (e.g., \`# Joshua 1: Be Strong and Courageous\`). If there is no clear series or title, create a short descriptive title from the main passage and theme.
+* Date line: \`Date: YYYY-MM-DD\`. Use the date if provided. If no date is available anywhere, write \`Date: [date]\` rather than guessing.
+* Scripture line: the primary passage(s) preached, e.g., \`Scripture: Titus 2:1-15\`.
+* Preacher line: \`Preacher: Pastor [Name]\`, or the speaker's title and name as given (e.g., \`Preacher: Dr. Ron White\`).
+* The Discussion Questions category order is fixed: Connecting, then Considering, then Confessing, then Committing. Never reorder.
+* Questions and next steps use \`-\` bullets, never numbers.
+* Add no other headings, preambles, or closing remarks. The output starts at the \`#\` title line and ends with the last Next Step bullet.
+
+Recap section (3-4 paragraphs):
+
+* Write a warm, clear narrative, not bullets or an outline. The tone is a thoughtful church member explaining the sermon to a friend who missed Sunday.
+* Weave in: the sermon's place in any larger series, the primary Scripture and what was drawn from it, key illustrations or real-life examples with enough detail that someone who wasn't there can follow, and the throughline connecting everything.
+* Keep it to 4 paragraphs of moderate length, roughly 350-450 words total. This is a summary, not a transcript. Cut ruthlessly. Do not exceed this range no matter how long the source is.
+* Refer to the speaker by name throughout as "Pastor [Firstname]," not "the pastor."
+
+One Thing: the sermon's core takeaway as a single sentence. If the speaker stated a "one thing" or bottom line, use it. Otherwise distill one.
+Writing style:
+
+* Do NOT use em dashes anywhere except the one permitted title line. Use commas, periods, or restructure the sentence. If you reach for an em dash, rewrite.
+* No academic or heavy theological language. Aim for the reading level of a church bulletin, not a seminary paper.
+* Write like a person. Vary sentence length. Let some sentences be short. Don't over-qualify.
+* When referencing Scripture, include the reference (e.g., "Matthew 5:13-16") but don't over-quote; paraphrase naturally.
+
+Avoid these AI writing hallmarks:
+
+* Transitional hype phrases like "The second half turns urgent" or "[Book] is short and easy to overlook, but Pastor X found real treasure in it." Describe what happened without editorializing about the book or labeling passages as "sobering," "rich," "powerful," etc.
+* Commentary on the pastor's approach or delivery ("Pastor X got personal here," "made the point plainly," "was careful to draw the right distinction"). Summarize what was said, not how well it was said. Use neutral framing like "Pastor X reminded us that...," "noted that...," "shared from his own life...," "pointed out that...". Do not evaluate or praise the pastor's skill.
+* Parallel sentence pairs for dramatic effect, like "Someone genuinely seeking deserves a warm welcome. Someone trying to mislead is a different situation entirely." Fold the thought into one natural sentence.
+* Overused X-and-Y constructions. Don't repeat the same coupled phrase ("truth and love," "truth, love, and obedience") several times. Vary phrasing.
+* Throat-clearing openers like "This message continued...," "This week, Pastor X turned to...," or "[Book] is one of the shortest books in the Bible, but...". Get into the content faster.
+* Filler affirmations like "real treasure," "a striking question," "a powerful reminder," "sobering territory." Just say the thing.
+* Meta-commentary on the sermon's structure like "The first half is warm. The second half turns urgent." Describe the content directly.
+
+Discussion Questions (8 total, exactly 2 per category). Keep each short and direct, one sentence ideally, two at most. No compound multi-part questions.
+
+* Connecting (2): the warm-up. Genuinely lighthearted, requiring no personal sharing, so everyone talks and smiles before it goes deeper. Find a clever angle on the sermon's theme anyone could answer without feeling exposed. Good examples of the right tone: "Why do you think most people can easily name someone richer than themselves, but rarely think of themselves as rich?"; "What comes to mind when you hear the phrase 'salt and light'?"; "When you hear the word stewardship, what images come to mind?" Save personal vulnerability for Confessing.
+* Considering (2): observation and interpretation questions about the Scripture text itself. Point people to the passage; ask what it says, what stands out, what the author commands or warns. Do NOT reference the pastor or what they said. Good: "In 1 Timothy 6:17-19, what attitudes does Paul warn the rich about, and what actions does he encourage instead?" Avoid: "How did Pastor Sam explain this passage?"
+* Confessing (2): invite honest personal reflection on where people struggle or where the message hit home. One honest question each, not compound.
+* Committing (2): push toward action, specific enough to be actionable ("who is one person...", "what is one step...") rather than vague ("how can you be better?").
+
+Next Steps (exactly 3 bullets): practical action items drawn directly from the sermon, each one short line, something someone could screenshot or stick on their fridge. If the pastor gave explicit action steps or challenges, use those rather than inventing new ones.
+Edge cases:
+
+* If the transcript is messy or full of filler words, clean it up. Extract the substance and ignore the "ums" and tangents.
+* If no Scripture passage is obvious, focus the recap on themes and illustrations, and for Considering questions ask about the principles or ideas presented rather than a specific text.
+* If the sermon is part of a series, mention the series name and how this message connects to the larger arc.
+
+Now produce the guide from the sermon content that follows.`;
+
 function slugify(text: string): string {
   const s = text
     .replace(/[^A-Za-z0-9]+/g, "-")
@@ -395,6 +489,31 @@ function isRateLimitError(message: string): boolean {
   return /429|quota|rate.?limit|resource_exhausted/i.test(message);
 }
 
+// navigator.clipboard needs a secure context and can still throw (permissions,
+// an insecure iframe, older browsers); fall back to the classic hidden-textarea
+// trick rather than leaving the editor with no way to get the prompt at all.
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 function describeInbox(row: InboxRow): string {
   const parts: string[] = [];
   if (row.date) parts.push(fmtDate(row.date));
@@ -444,6 +563,7 @@ export default function Page() {
   const [viewMode, setViewMode] = useState<"fields" | "markdown">("fields");
   const [markdownText, setMarkdownText] = useState("");
   const [markdownError, setMarkdownError] = useState<string | null>(null);
+  const [promptCopied, setPromptCopied] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("studio_passcode");
@@ -779,6 +899,22 @@ export default function Page() {
     setMarkdownError(null);
     setStage("review");
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // Copies the standalone generation prompt (plus the pasted transcript, if
+  // there is one) so it can be run in an outside AI when Gemini isn't an
+  // option, then pasted back in via Markdown mode.
+  async function copyExternalPrompt() {
+    const text = transcript.trim()
+      ? `${EXTERNAL_AI_PROMPT}\n\n--- SERMON TRANSCRIPT ---\n\n${transcript.trim()}`
+      : EXTERNAL_AI_PROMPT;
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setPromptCopied(true);
+      setTimeout(() => setPromptCopied(false), 2000);
+    } else {
+      setError("Couldn't copy to the clipboard. Check your browser's clipboard permissions and try again.");
+    }
   }
 
   // Send the draft as it currently stands, edits included, so Gemini revises it
@@ -1121,10 +1257,16 @@ export default function Page() {
               <button className="secondary" onClick={startManual}>
                 Write it myself
               </button>
+              <button className="secondary" onClick={() => void copyExternalPrompt()}>
+                {promptCopied ? "Copied!" : "Copy prompt for another AI"}
+              </button>
             </div>
             <p className="muted" style={{ marginTop: 8 }}>
               Hitting Gemini&apos;s free API limit? &quot;Write it myself&quot; opens the same
-              editable fields without calling Gemini.
+              editable fields without calling Gemini. &quot;Copy prompt for another AI&quot;
+              copies a ready-to-run generation prompt{transcript.trim() ? " with your transcript" : ""}{" "}
+              — paste it into ChatGPT, Claude, or another AI, then paste the markdown it gives back
+              into Markdown mode after clicking &quot;Write it myself&quot;.
             </p>
           </div>
 
