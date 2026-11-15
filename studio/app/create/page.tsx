@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { Field, AutoTextarea } from "@/components/fields";
+import { MetaFields } from "@/components/MetaFields";
+import { GuidePreview } from "@/components/GuidePreview";
+import { lines, paras, type Draft, type Meta } from "@/lib/studio";
 import {
   parseTranscript,
   wordCount,
@@ -13,26 +16,6 @@ import {
 
 type Stage = "input" | "working" | "review";
 type Mode = "audio" | "file" | "paste";
-
-type Meta = {
-  series: string;
-  part: string;
-  date: string;
-  preacher: string;
-  scripture: string;
-};
-
-type Draft = {
-  recap: string;
-  one_thing: string;
-  connecting: string;
-  considering: string;
-  confessing: string;
-  committing: string;
-  next_steps_intro: string;
-  next_steps_title: string;
-  next_steps: string;
-};
 
 type GuideRef = { slug: string; url: string };
 
@@ -161,18 +144,6 @@ function slugify(text: string): string {
   return s || "guide";
 }
 
-const lines = (s: string): string[] =>
-  s
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-const paras = (s: string): string[] =>
-  s
-    .split(/\n\s*\n/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-
 function getCat(dq: Record<string, string[]>, name: string): string[] {
   const key = Object.keys(dq).find((k) => k.toLowerCase() === name.toLowerCase());
   return key ? dq[key] : [];
@@ -202,9 +173,9 @@ function getCat(dq: Record<string, string[]>, name: string): string[] {
 //   ## Next Steps
 //   - ...
 //
-// Markdown is only ever applied to the fields on "switch to Fields" — never
-// read live off the textarea — so Publish/Regenerate always act on `draft`,
-// never on unapplied markdown edits.
+// While the Markdown tab is showing, the text is parsed live (see mdParsed) and
+// that parse drives the preview and Publish. It is only merged into
+// `draft`/`meta` when switching back to Fields; Regenerate stays Fields-only.
 
 function isMetaEmpty(m: Meta): boolean {
   return !m.series.trim() && !m.part.trim() && !m.date.trim() && !m.preacher.trim() && !m.scripture.trim();
@@ -465,6 +436,27 @@ function parseGuideMarkdown(raw: string): MarkdownParseResult {
   };
 }
 
+// The guide as it will be published when the Markdown tab is showing: the
+// markdown text is the source of truth there, so a line that's missing means
+// "cleared". Date is the exception — a missing or unparseable date keeps the
+// current one (the server defaults a blank date to today anyway).
+function resolveMarkdown(
+  parsed: Extract<MarkdownParseResult, { ok: true }>,
+  base: Meta,
+  baseDraft: Draft,
+): { meta: Meta; draft: Draft } {
+  return {
+    meta: {
+      series: parsed.meta.series,
+      part: parsed.meta.part,
+      date: parsed.meta.date ?? base.date,
+      preacher: parsed.meta.preacher ?? "",
+      scripture: parsed.meta.scripture ?? "",
+    },
+    draft: { ...parsed.draft, next_steps_title: baseDraft.next_steps_title },
+  };
+}
+
 function fmtDate(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
@@ -717,36 +709,58 @@ export default function Page() {
   const setMetaField = (k: keyof Meta, v: string) => setMeta((m) => ({ ...m, [k]: v }));
   const setDraftField = (k: keyof Draft, v: string) => setDraft((d) => ({ ...d, [k]: v }));
 
-  function metaOut() {
+  function metaOut(m: Meta = meta) {
     return {
-      series: meta.series.trim(),
-      part: meta.part.trim() || undefined,
-      date: meta.date || undefined,
-      preacher: meta.preacher.trim() || undefined,
-      scripture_title: meta.scripture.trim() || undefined,
-      scripture_ref: meta.scripture.trim() || undefined,
+      series: m.series.trim(),
+      part: m.part.trim() || undefined,
+      date: m.date || undefined,
+      preacher: m.preacher.trim() || undefined,
+      scripture_title: m.scripture.trim() || undefined,
+      scripture_ref: m.scripture.trim() || undefined,
     };
   }
 
-  function contentOut() {
+  function contentOut(d: Draft = draft) {
     const dq: Record<string, string[]> = {};
     const add = (name: string, v: string) => {
       const list = lines(v);
       if (list.length) dq[name] = list;
     };
-    add("Connecting", draft.connecting);
-    add("Considering", draft.considering);
-    add("Confessing", draft.confessing);
-    add("Committing", draft.committing);
+    add("Connecting", d.connecting);
+    add("Considering", d.considering);
+    add("Confessing", d.confessing);
+    add("Committing", d.committing);
     return {
-      recap: paras(draft.recap),
-      one_thing: draft.one_thing.trim(),
+      recap: paras(d.recap),
+      one_thing: d.one_thing.trim(),
       discussion_questions: dq,
-      next_steps: lines(draft.next_steps),
-      next_steps_intro: draft.next_steps_intro.trim() || undefined,
-      next_steps_title: draft.next_steps_title.trim() || undefined,
+      next_steps: lines(d.next_steps),
+      next_steps_intro: d.next_steps_intro.trim() || undefined,
+      next_steps_title: d.next_steps_title.trim() || undefined,
     };
   }
+
+  // While the Markdown tab is showing, the markdown text IS the guide: parse it
+  // live so it can be previewed and published without switching back to Fields.
+  const mdParsed = useMemo(
+    () => (viewMode === "markdown" ? parseGuideMarkdown(markdownText) : null),
+    [viewMode, markdownText],
+  );
+  const mdResolved = useMemo(
+    () => (mdParsed && mdParsed.ok && !mdParsed.isBlank ? resolveMarkdown(mdParsed, meta, draft) : null),
+    [mdParsed, meta, draft],
+  );
+  // What the preview and the publish button act on, whichever tab is showing.
+  const active: { meta: Meta; draft: Draft } | null =
+    viewMode === "markdown" ? mdResolved : { meta, draft };
+  const mdBlocker: string | null =
+    viewMode !== "markdown"
+      ? null
+      : mdParsed && !mdParsed.ok
+        ? mdParsed.error
+        : mdParsed && mdParsed.ok && mdParsed.isBlank
+          ? "The markdown box is empty. Paste or write a guide to publish it."
+          : null;
 
   function guideToDraft(g: Record<string, unknown>): Draft {
     const dq = (g.discussion_questions || {}) as Record<string, string[]>;
@@ -808,15 +822,9 @@ export default function Page() {
       if (!proceed) return;
     }
 
-    setDraft((d) => ({ ...parsed.draft, next_steps_title: d.next_steps_title }));
-    setMeta((m) => ({
-      ...m,
-      series: parsed.meta.series,
-      part: parsed.meta.part,
-      date: parsed.meta.date ?? m.date,
-      preacher: parsed.meta.preacher ?? m.preacher,
-      scripture: parsed.meta.scripture ?? m.scripture,
-    }));
+    const next = resolveMarkdown(parsed, meta, draft);
+    setDraft(next.draft);
+    setMeta(next.meta);
     setViewMode("fields");
   }
 
@@ -962,16 +970,37 @@ export default function Page() {
     setUndoDraft(null);
   }
 
-  async function onPublish(confirmOverwrite = false) {
+  // Publishes whatever is showing: the Fields version, or — on the Markdown tab
+  // — the parsed markdown. `snapshot` carries the exact guide through the
+  // overwrite-confirm retry.
+  async function onPublish(
+    confirmOverwrite = false,
+    snapshot?: { meta: Meta; draft: Draft },
+  ) {
     setError(null);
+    const target = snapshot ?? active;
+    if (!target) return setError(mdBlocker ?? "Nothing to publish.");
+    if (!target.meta.series.trim()) {
+      return setError(
+        viewMode === "markdown"
+          ? 'Add a title line starting with "# " so the guide has a series.'
+          : "Series is required — fill it in under Details.",
+      );
+    }
+    if (!snapshot && viewMode === "markdown" && mdParsed && mdParsed.ok && mdParsed.warnings.length) {
+      const proceed = window.confirm(
+        `Some content couldn't be imported and won't be published:\n\n${mdParsed.warnings.join("\n")}\n\nPublish anyway?`,
+      );
+      if (!proceed) return;
+    }
     setPublishing(true);
     try {
       const res = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-app-passcode": passcode },
         body: JSON.stringify({
-          meta: metaOut(),
-          content: contentOut(),
+          meta: metaOut(target.meta),
+          content: contentOut(target.draft),
           transcript,
           confirmOverwrite,
           inboxId: mode === "paste" ? inboxId ?? undefined : undefined,
@@ -981,7 +1010,7 @@ export default function Page() {
       if (res.status === 409 && data.needsConfirm) {
         const ok = window.confirm(`${data.message} Overwrite it?`);
         setPublishing(false);
-        if (ok) await onPublish(true);
+        if (ok) await onPublish(true, target);
         return;
       }
       if (!res.ok) throw new Error(data.error || "Publish failed");
@@ -1016,6 +1045,10 @@ export default function Page() {
   }
 
   const slug = meta.series.trim() ? slugify(`${meta.series} ${meta.part}`.trim()) : "";
+  const activeSlug =
+    active && active.meta.series.trim()
+      ? slugify(`${active.meta.series} ${active.meta.part}`.trim())
+      : "";
 
   if (!authed) {
     return (
@@ -1142,59 +1175,7 @@ export default function Page() {
               </button>
             </div>
 
-            <div className="row">
-              <div className="field">
-                <label>Series *</label>
-                <input
-                  type="text"
-                  value={meta.series}
-                  onChange={(e) => setMetaField("series", e.target.value)}
-                  placeholder="ADORE"
-                />
-              </div>
-              <div className="field">
-                <label>Part</label>
-                <input
-                  type="text"
-                  value={meta.part}
-                  onChange={(e) => setMetaField("part", e.target.value)}
-                  placeholder="Part 5: Worship With Presence"
-                />
-              </div>
-            </div>
-            <div className="row">
-              <div className="field">
-                <label>
-                  Date <span className="hint">— defaults to today</span>
-                </label>
-                <input
-                  type="date"
-                  value={meta.date}
-                  onChange={(e) => setMetaField("date", e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label>Preacher</label>
-                <input
-                  type="text"
-                  value={meta.preacher}
-                  onChange={(e) => setMetaField("preacher", e.target.value)}
-                  placeholder="Pastor Pete Dahlem"
-                />
-              </div>
-            </div>
-            <div className="field">
-              <label>
-                Scripture reference{" "}
-                <span className="hint">— e.g. Luke 2:1-20 (passage text filled by the site)</span>
-              </label>
-              <input
-                type="text"
-                value={meta.scripture}
-                onChange={(e) => setMetaField("scripture", e.target.value)}
-                placeholder="Luke 2:1-20"
-              />
-            </div>
+            <MetaFields meta={meta} onChange={setMetaField} />
             {slug && (
               <p className="muted">
                 Will publish as <code>content/{slug}.yaml</code>
@@ -1395,8 +1376,9 @@ export default function Page() {
                   />
                 </Field>
                 <p className="muted">
-                  Edits here apply to the fields when you switch back to Fields — Regenerate and
-                  Publish always use the Fields version. First line sets Series / Part, e.g.{" "}
+                  The preview below and Approve &amp; publish use exactly what&apos;s in this box.
+                  Switching to Fields applies it to the form; Regenerate needs Fields. First line
+                  sets Series / Part, e.g.{" "}
                   <code># ADORE — Part 5: Worship With Joy</code>; Date, Scripture, and Preacher
                   lines are optional. Anything that doesn&apos;t match this format is flagged
                   before it&apos;s applied, so nothing is silently dropped.
@@ -1407,6 +1389,11 @@ export default function Page() {
 
           {viewMode === "fields" && (
             <>
+              <div className="card">
+                <label style={{ marginBottom: 12 }}>Details</label>
+                <MetaFields meta={meta} onChange={setMetaField} />
+              </div>
+
               <div className="card">
                 <Field label="Recap (paragraphs, blank line between)">
                   <AutoTextarea
@@ -1468,19 +1455,37 @@ export default function Page() {
                 </Field>
               </div>
 
-              <Preview meta={meta} draft={draft} />
-
-              {slug && (
-                <p className="muted" style={{ marginTop: 12 }}>
-                  Publishing to <code>content/{slug}.yaml</code>
-                  {transcript.trim() ? ` and transcripts/${slug}.md` : ""}.
-                </p>
-              )}
             </>
           )}
 
+          {active ? (
+            <GuidePreview meta={active.meta} draft={active.draft} />
+          ) : (
+            <p className="muted" style={{ marginTop: 12 }}>
+              {mdBlocker ?? "Nothing to preview yet."}
+            </p>
+          )}
+
+          {activeSlug && (
+            <p className="muted" style={{ marginTop: 12 }}>
+              Publishing to <code>content/{activeSlug}.yaml</code>
+              {transcript.trim() ? ` and transcripts/${activeSlug}.md` : ""}.
+            </p>
+          )}
+
+          {viewMode === "markdown" && mdParsed && mdParsed.ok && mdParsed.warnings.length > 0 && (
+            <div className="warn" style={{ marginTop: 12 }}>
+              Some content won&apos;t be imported or published:
+              <ul>
+                {mdParsed.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="actions actions-sticky" style={{ marginTop: 8 }}>
-            <button onClick={() => onPublish(false)} disabled={publishing || viewMode === "markdown"}>
+            <button onClick={() => onPublish(false)} disabled={publishing || !active}>
               {publishing && <span className="spinner" />}
               {publishing ? "Publishing…" : "Approve & publish"}
             </button>
@@ -1488,67 +1493,6 @@ export default function Page() {
               Back
             </button>
           </div>
-          {viewMode === "markdown" && (
-            <p className="muted" style={{ marginTop: 8 }}>
-              Switch to Fields to publish.
-            </p>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function Preview({ meta, draft }: { meta: Meta; draft: Draft }) {
-  const cats: [string, string][] = [
-    ["Connecting", draft.connecting],
-    ["Considering", draft.considering],
-    ["Confessing", draft.confessing],
-    ["Committing", draft.committing],
-  ];
-  return (
-    <div className="preview">
-      <p className="series">{meta.series || "Series"}</p>
-      {meta.part && <p className="part">{meta.part}</p>}
-      {meta.scripture && <p className="muted">{meta.scripture}</p>}
-
-      {paras(draft.recap).length > 0 && (
-        <>
-          <h2>Sermon Recap</h2>
-          {paras(draft.recap).map((p, i) => (
-            <p key={i}>{p}</p>
-          ))}
-        </>
-      )}
-      {draft.one_thing.trim() && <p className="one-thing">{draft.one_thing}</p>}
-
-      {cats.some(([, v]) => lines(v).length > 0) && (
-        <>
-          <h2>Discussion Questions</h2>
-          {cats.map(([name, v]) =>
-            lines(v).length ? (
-              <div key={name}>
-                <p className="dq-cat">{name}</p>
-                <ul>
-                  {lines(v).map((q, i) => (
-                    <li key={i}>{q}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null,
-          )}
-        </>
-      )}
-
-      {lines(draft.next_steps).length > 0 && (
-        <>
-          <h2>Next Steps</h2>
-          {draft.next_steps_intro.trim() && <p>{draft.next_steps_intro}</p>}
-          <ol>
-            {lines(draft.next_steps).map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ol>
         </>
       )}
     </div>
