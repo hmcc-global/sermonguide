@@ -69,6 +69,33 @@ function guidePrompt(meta: GuideMeta): string {
   return `${INSTRUCTIONS}\n\n--- SERMON CONTEXT ---\n${context}`;
 }
 
+// The editor's own words, so a hard cap is about keeping the prompt sane rather
+// than about trust. Enforced again at the route boundary.
+export const MAX_REVISION_NOTES = 4000;
+
+// A revision is the same job with two extra inputs: what we produced last time,
+// and what the editor wants changed about it. Framed as an edit rather than a
+// fresh generation so untouched sections stay put, including manual edits.
+function revisionPrompt(previous: GuideContent, notes: string): string {
+  return `
+
+--- PREVIOUS DRAFT ---
+${JSON.stringify(previous, null, 2)}
+
+--- REQUESTED CHANGES ---
+${notes}
+
+--- HOW TO REVISE ---
+Return a complete guide in the same JSON shape, not a diff or a fragment.
+Keep the previous draft's wording verbatim wherever the requested changes do
+not touch it, including any wording the editor has already adjusted by hand.
+Apply every requested change. Where a request conflicts with the general
+guidance above, the request wins, except that you still may not invent
+quotes, scripture, statistics, or stories the sermon did not contain, and you
+still may not use em dashes. If a request cannot be satisfied from the sermon,
+leave that part as it was rather than inventing material to satisfy it.`;
+}
+
 async function groqError(res: Response): Promise<Error> {
   let detail = "";
   try {
@@ -85,9 +112,13 @@ async function groqError(res: Response): Promise<Error> {
 export async function generateGuideFromTranscript(
   transcript: string,
   meta: GuideMeta,
+  revision?: { notes: string; previous: GuideContent },
 ): Promise<GuideContent> {
   const key = apiKey();
-  const prompt = `${guidePrompt(meta)}\n\n--- TRANSCRIPT ---\n${transcript}`;
+  const base = `${guidePrompt(meta)}\n\n--- TRANSCRIPT ---\n${transcript}`;
+  const prompt = revision
+    ? base + revisionPrompt(revision.previous, revision.notes.slice(0, MAX_REVISION_NOTES))
+    : base;
   return withRetry(async () => {
     const res = await fetch(`${API}/chat/completions`, {
       method: "POST",

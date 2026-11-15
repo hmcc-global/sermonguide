@@ -8,6 +8,7 @@ on:
       - "content/**"
       - "templates/**"
       - "static/**"
+      - "scripts/**"
       - "build.py"
       - "requirements.txt"
       - ".github/workflows/build.yml"
@@ -44,6 +45,12 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      # static/styles.css and studio/app/(site)/site.css render the same pages
+      # and must stay identical apart from their font variables. Catch drift
+      # here rather than shipping a fix to only one of the two surfaces.
+      - name: Check the reader stylesheets are in sync
+        run: python scripts/check_css_sync.py
 
       - name: Build the site (rebuilds every guide in content/)
         run: python build.py
