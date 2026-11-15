@@ -2,7 +2,7 @@ import type { GuideMeta, GuideContent } from "@/lib/guide";
 
 // Groq exposes an OpenAI-compatible API. Models are overridable without a code change.
 const API = "https://api.groq.com/openai/v1";
-const CHAT_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const CHAT_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 const STT_MODEL = process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo";
 
 const INSTRUCTIONS = `You create a sermon recap and small-group Bible study guide for HMCC (Harvest Mission Community Church). The output must read like a thoughtful church member who listened closely to THIS sermon, never generic and never like AI-generated text.
@@ -107,6 +107,96 @@ async function groqError(res: Response): Promise<Error> {
   return new Error(`Groq API error (${res.status})${detail ? `: ${detail}` : ""}`);
 }
 
+// ---- Chat helper ----
+// The free tier allows ~8K tokens/minute, so a request must stay small and a 429
+// (rate limited) is expected: wait for the retry-after window and try again.
+
+async function chat(
+  prompt: string,
+  opts: { json?: boolean; maxTokens: number; temperature?: number },
+): Promise<string> {
+  const key = apiKey();
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${API}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: CHAT_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+        // gpt-oss models think before answering; keep that cheap so the budget goes to the output.
+        ...(CHAT_MODEL.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
+        temperature: opts.temperature ?? 0.4,
+        max_tokens: opts.maxTokens,
+      }),
+    });
+    if (res.status === 429 && attempt < 4) {
+      const wait = Number(res.headers.get("retry-after")) || 15;
+      // A long wait means a daily cap, not a per-minute one; don't hang the request on it.
+      if (wait <= 60) {
+        await sleep((wait + 1) * 1000);
+        continue;
+      }
+    }
+    if (!res.ok) throw await groqError(res);
+    const data = await res.json();
+    const out: string | undefined = data?.choices?.[0]?.message?.content;
+    if (!out?.trim()) throw new Error("Groq returned an empty response");
+    return out;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// Split on paragraph/sentence boundaries into pieces of at most `max` characters.
+function splitText(text: string, max: number): string[] {
+  const pieces = text.split(/\n+|(?<=[.?!])\s+/).filter(Boolean);
+  const chunks: string[] = [];
+  let cur = "";
+  for (const piece of pieces) {
+    if (cur && cur.length + piece.length + 1 > max) {
+      chunks.push(cur);
+      cur = "";
+    }
+    // A single huge unpunctuated run: hard-split it.
+    for (let i = 0; i < piece.length; i += max) {
+      const part = piece.slice(i, i + max);
+      cur = cur ? `${cur} ${part}` : part;
+      if (piece.length > max) {
+        chunks.push(cur);
+        cur = "";
+      }
+    }
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
+// Full sermons don't fit in one free-tier request, so turn the transcript into
+// faithful, ordered notes a piece at a time. The guide is then written from the notes.
+async function condenseTranscript(
+  transcript: string,
+  meta: GuideMeta,
+  wordsPerPart: number,
+): Promise<string> {
+  const chunks = splitText(transcript, 12000);
+  const ctx = [meta.series, meta.scripture_title, meta.preacher].filter(Boolean).join(", ");
+  const notes: string[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const prompt = `You are taking notes on part ${i + 1} of ${chunks.length} of a sermon transcript${ctx ? ` (${ctx})` : ""}.
+Write detailed notes in the order things were said, at most ${wordsPerPart} words.
+Keep: scripture references and what the preacher said about them, the main points, every illustration or personal story with its concrete details (names, places, what happened), memorable phrasings, and any direct challenges or action steps.
+Do not interpret, add, or invent anything. Plain text only, no preamble.
+
+--- TRANSCRIPT PART ---
+${chunks[i]}`;
+    notes.push((await chat(prompt, { maxTokens: 1200, temperature: 0.2 })).trim());
+  }
+  return notes.map((n, i) => `[Part ${i + 1} of ${chunks.length}]\n${n}`).join("\n\n");
+}
+
 // ---- Transcript -> guide ----
 
 export async function generateGuideFromTranscript(
@@ -114,27 +204,22 @@ export async function generateGuideFromTranscript(
   meta: GuideMeta,
   revision?: { notes: string; previous: GuideContent },
 ): Promise<GuideContent> {
-  const key = apiKey();
-  const base = `${guidePrompt(meta)}\n\n--- TRANSCRIPT ---\n${transcript}`;
+  apiKey(); // fail fast if unset
+
+  // Small transcripts go in whole; anything longer is condensed first (tighter when a
+  // revision also carries the previous draft, to stay under the per-minute token cap).
+  const limit = revision ? 6000 : 13000;
+  const long = transcript.length > limit;
+  const source = long
+    ? `--- SERMON NOTES (condensed from the full transcript, in order) ---\n${await condenseTranscript(transcript, meta, revision ? 200 : 350)}`
+    : `--- TRANSCRIPT ---\n${transcript}`;
+
+  const base = `${guidePrompt(meta)}\n\n${source}`;
   const prompt = revision
     ? base + revisionPrompt(revision.previous, revision.notes.slice(0, MAX_REVISION_NOTES))
     : base;
   return withRetry(async () => {
-    const res = await fetch(`${API}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: CHAT_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.4,
-        max_tokens: 4096,
-      }),
-    });
-    if (!res.ok) throw await groqError(res);
-    const data = await res.json();
-    const raw: string | undefined = data?.choices?.[0]?.message?.content;
-    if (!raw?.trim()) throw new Error("Groq returned an empty response");
+    const raw = await chat(prompt, { json: true, maxTokens: 2800 });
     return parseGuide(raw);
   });
 }
