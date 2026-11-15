@@ -1,8 +1,9 @@
-import { GoogleGenAI, FileState, createPartFromUri, type Part } from "@google/genai";
 import type { GuideMeta, GuideContent } from "@/lib/guide";
 
-// Rolling alias that tracks the current Flash model, overridable without a code change.
-const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// Groq exposes an OpenAI-compatible API. Models are overridable without a code change.
+const API = "https://api.groq.com/openai/v1";
+const CHAT_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const STT_MODEL = process.env.GROQ_STT_MODEL || "whisper-large-v3-turbo";
 
 const INSTRUCTIONS = `You create a sermon recap and small-group Bible study guide for HMCC (Harvest Mission Community Church). The output must read like a thoughtful church member who listened closely to THIS sermon, never generic and never like AI-generated text.
 
@@ -50,14 +51,10 @@ EDGE CASES: If the transcript is messy, clean it up and ignore filler and tangen
 
 Base everything strictly on the sermon provided. Do NOT invent quotes, scripture, statistics, or stories the preacher did not give. Output valid JSON only. No markdown, no commentary, no code fences.`;
 
-const TRANSCRIBE_PROMPT = `Transcribe this sermon audio verbatim into clean, readable paragraphs.
-Include all spoken content. Do not summarize, add headings, timestamps, speaker labels, or commentary.
-Output plain text only.`;
-
-function client(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
-  return new GoogleGenAI({ apiKey });
+function apiKey(): string {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error("GROQ_API_KEY is not set");
+  return key;
 }
 
 function guidePrompt(meta: GuideMeta): string {
@@ -72,31 +69,46 @@ function guidePrompt(meta: GuideMeta): string {
   return `${INSTRUCTIONS}\n\n--- SERMON CONTEXT ---\n${context}`;
 }
 
-// ---- Phase 1: pasted transcript -> guide (non-streaming; small, fast) ----
+async function groqError(res: Response): Promise<Error> {
+  let detail = "";
+  try {
+    const j = await res.json();
+    detail = j?.error?.message || "";
+  } catch {
+    /* ignore */
+  }
+  return new Error(`Groq API error (${res.status})${detail ? `: ${detail}` : ""}`);
+}
+
+// ---- Transcript -> guide ----
 
 export async function generateGuideFromTranscript(
   transcript: string,
   meta: GuideMeta,
 ): Promise<GuideContent> {
-  const ai = client();
+  const key = apiKey();
   const prompt = `${guidePrompt(meta)}\n\n--- TRANSCRIPT ---\n${transcript}`;
   return withRetry(async () => {
-    const res = await ai.models.generateContent({
-      model: MODEL,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 32768,
+    const res = await fetch(`${API}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: CHAT_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
         temperature: 0.4,
-      },
+        max_tokens: 4096,
+      }),
     });
-    const raw = res.text;
-    if (!raw) throw new Error("Gemini returned an empty response");
+    if (!res.ok) throw await groqError(res);
+    const data = await res.json();
+    const raw: string | undefined = data?.choices?.[0]?.message?.content;
+    if (!raw?.trim()) throw new Error("Groq returned an empty response");
     return parseGuide(raw);
   });
 }
 
-// ---- Phase 2: audio -> { guide, transcript } ----
+// ---- Audio -> { guide, transcript } (Whisper transcription, then the guide) ----
 
 export type AudioResult = {
   guide: GuideContent;
@@ -109,94 +121,39 @@ export async function generateFromAudio(
   mimeType: string,
   meta: GuideMeta,
 ): Promise<AudioResult> {
-  const ai = client();
-  const file = await uploadAndWait(ai, audioBytes, mimeType);
-  const audioPart = createPartFromUri(file.uri as string, file.mimeType as string);
-
-  // Guide is the critical artifact — let it throw if it fails.
-  const guide = await streamGuide(ai, audioPart, meta);
-
-  // Transcript is best-effort — never let its failure lose the guide.
-  let transcript: string | null = null;
-  let transcriptFailed = false;
-  try {
-    transcript = await streamTranscript(ai, audioPart);
-  } catch {
-    transcriptFailed = true;
-  }
-
-  // Clean up the Gemini-side file (it would auto-expire in 48h anyway).
-  try {
-    if (file.name) await ai.files.delete({ name: file.name });
-  } catch {
-    /* best effort */
-  }
-
-  return { guide, transcript, transcriptFailed };
+  const transcript = await transcribe(audioBytes, mimeType);
+  const guide = await generateGuideFromTranscript(transcript, meta);
+  return { guide, transcript, transcriptFailed: false };
 }
 
-async function uploadAndWait(ai: GoogleGenAI, bytes: ArrayBuffer, mimeType: string) {
-  const blob = new Blob([bytes], { type: mimeType });
-  let file = await ai.files.upload({ file: blob, config: { mimeType } });
-
-  const deadline = Date.now() + 120_000;
-  while (file.state === FileState.PROCESSING && Date.now() < deadline) {
-    await sleep(2000);
-    if (!file.name) break;
-    file = await ai.files.get({ name: file.name });
-  }
-
-  if (file.state === FileState.FAILED) {
-    throw new Error("Gemini failed to process the audio file");
-  }
-  if (!file.uri || !file.mimeType) {
-    throw new Error("Gemini did not return a usable file URI (audio may still be processing)");
-  }
-  return file;
-}
-
-async function streamGuide(
-  ai: GoogleGenAI,
-  audioPart: Part,
-  meta: GuideMeta,
-): Promise<GuideContent> {
+async function transcribe(bytes: ArrayBuffer, mimeType: string): Promise<string> {
+  const key = apiKey();
   return withRetry(async () => {
-    const stream = await ai.models.generateContentStream({
-      model: MODEL,
-      contents: [{ role: "user", parts: [{ text: guidePrompt(meta) }, audioPart] }],
-      config: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 32768,
-        temperature: 0.4,
-      },
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type: mimeType }), "sermon" + extFor(mimeType));
+    form.append("model", STT_MODEL);
+    form.append("response_format", "text");
+    form.append("temperature", "0");
+    const res = await fetch(`${API}/audio/transcriptions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
     });
-    let text = "";
-    for await (const chunk of stream) {
-      if (chunk.text) text += chunk.text;
-    }
-    if (!text.trim()) throw new Error("Gemini returned an empty guide");
-    return parseGuide(text);
+    if (!res.ok) throw await groqError(res);
+    const text = (await res.text()).trim();
+    if (!text) throw new Error("Empty transcript");
+    return text;
   });
 }
 
-async function streamTranscript(ai: GoogleGenAI, audioPart: Part): Promise<string> {
-  const stream = await ai.models.generateContentStream({
-    model: MODEL,
-    contents: [{ role: "user", parts: [{ text: TRANSCRIBE_PROMPT }, audioPart] }],
-    config: {
-      maxOutputTokens: 65536,
-      temperature: 0,    },
-  });
-  let text = "";
-  for await (const chunk of stream) {
-    if (chunk.text) text += chunk.text;
-  }
-  if (!text.trim()) throw new Error("Empty transcript");
-  return text.trim();
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+function extFor(mimeType: string): string {
+  const m = mimeType.toLowerCase();
+  if (m.includes("mp4") || m.includes("m4a") || m.includes("aac")) return ".m4a";
+  if (m.includes("wav")) return ".wav";
+  if (m.includes("ogg")) return ".ogg";
+  if (m.includes("webm")) return ".webm";
+  if (m.includes("flac")) return ".flac";
+  return ".mp3";
 }
 
 // Retry a flaky generation (empty/invalid JSON, transient API error) a couple of times.
@@ -216,7 +173,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
 
 function parseGuide(raw: string): GuideContent {
   const obj = extractJsonObject(raw);
-  if (!obj) throw new Error("Gemini did not return valid JSON");
+  if (!obj) throw new Error("Groq did not return valid JSON");
 
   const asStringList = (v: unknown): string[] =>
     Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : [];
@@ -241,7 +198,7 @@ function parseGuide(raw: string): GuideContent {
 
   // Treat an empty result as a failure so withRetry can try again.
   if (!guide.recap.length && !Object.keys(guide.discussion_questions).length) {
-    throw new Error("Gemini did not return valid JSON");
+    throw new Error("Groq did not return valid JSON");
   }
   return guide;
 }

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { del } from "@vercel/blob";
 import { checkPasscode } from "@/lib/auth";
-import { generateFromAudio, generateGuideFromTranscript } from "@/lib/gemini";
+import { generateFromAudio, generateGuideFromTranscript } from "@/lib/groq";
 import type { GuideMeta } from "@/lib/guide";
 
 export const runtime = "nodejs";
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
         const result = await generateFromAudio(bytes, body.mimeType || "audio/mp3", meta);
         return NextResponse.json(result);
       } finally {
-        // Always delete the blob (Gemini has its own copy) — even on failure, to stay on free storage.
+        // Always delete the blob (Groq does not keep it) — even on failure, to stay on free storage.
         try {
           await del(blobUrl);
         } catch {
