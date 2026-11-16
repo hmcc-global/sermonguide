@@ -4,7 +4,7 @@ One Next.js app that both **serves the guide site** and **hosts the authoring st
 
 - `/` — the guide index (ported from `build.py` + Jinja templates, generated at build from `content/*.yaml`)
 - `/<slug>.html` — an individual guide (same `.html` URLs as the Pages site)
-- `/create` — the studio: upload audio or paste a transcript → Groq draft → review → publish
+- `/create` — the studio: upload audio or paste a transcript → Gemini draft → review → publish
 - `/manage` — admin-only (separate passcode): list, **edit**, and **delete** published guides
 
 On publish it commits `content/<slug>.yaml` (+ a `transcripts/<slug>.md` archive) to this repo. That
@@ -32,7 +32,7 @@ studio/
     manage/                 # admin-only edit/delete (reuses studio.css)
       layout.tsx, page.tsx  #   ADMIN_PASSCODE gate -> list -> edit form / delete
     api/
-      generate/route.ts     # passcode-gated; transcript OR audio(blobUrl) -> Groq -> guide (+transcript)
+      generate/route.ts     # passcode-gated; transcript OR audio(blobUrl) -> Gemini -> guide (+transcript)
       publish/route.ts      # passcode-gated; assemble YAML + transcript, atomic commit
       upload/route.ts       # passcode-gated Blob client-token minter (onBeforeGenerateToken)
       guides/route.ts       # passcode-gated; lists published guide slugs
@@ -43,7 +43,7 @@ studio/
     guides.ts               # BUILD-TIME: read ../content/*.yaml, sort, neighbors, humandate, versesHtml
     esv.ts                  # BUILD-TIME: ESV passage fetch + disk cache (port of build.py)
     guide.ts                # slug / date / question order / YAML assembly (studio publish)
-    groq.ts                 # Groq calls (Whisper transcript + Llama guide) (transcript/audio -> guide, transcript)
+    gemini.ts               # Gemini calls (transcript/audio -> guide, transcript)
     github.ts               # atomic two-file commit + collision check
     auth.ts                 # passcode check (fails closed)
 ```
@@ -67,7 +67,7 @@ Env vars (see `.env.example`):
 |---|---|
 | `APP_PASSCODE` | Passcode for `/create` (generate + publish). |
 | `ADMIN_PASSCODE` | Separate passcode for `/manage` (edit + delete). Give only to admins. |
-| `GROQ_API_KEY` | https://console.groq.com/keys (free tier ok). |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey (free tier ok). |
 | `GITHUB_TOKEN` | Fine-grained PAT scoped to `sermonguide`: **Contents: Read and write** + **Metadata: Read-only**. |
 | `GITHUB_OWNER` / `GITHUB_REPO` / `GITHUB_BRANCH` | `hmcc-global` / `sermonguide` / `main`. |
 | `SITE_URL` | Public base URL of the guide site (the studio's "live" link). Falls back to the github.io URL. |
