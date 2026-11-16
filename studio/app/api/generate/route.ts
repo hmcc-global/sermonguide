@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { del } from "@vercel/blob";
 import { checkPasscode } from "@/lib/auth";
-import { generateFromAudio, generateGuideFromTranscript, MAX_REVISION_NOTES } from "@/lib/groq";
+import { generateFromAudio, generateGuideFromTranscript, MAX_REVISION_NOTES } from "@/lib/gemini";
 import type { GuideMeta, GuideContent } from "@/lib/guide";
 
 export const runtime = "nodejs";

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^1.0.0",
     "@octokit/rest": "^21.0.0",
     "@vercel/blob": "^2.5.0",
     "js-yaml": "^4.1.0",
