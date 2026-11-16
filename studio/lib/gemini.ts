@@ -6,8 +6,9 @@ const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
 
 const INSTRUCTIONS = `You create a sermon recap and small-group Bible study guide for HMCC (Harvest Mission Community Church). The output must read like a thoughtful church member who listened closely to THIS sermon, never generic and never like AI-generated text.
 
-The title, date, scripture, and preacher are handled separately, so you write ONLY these four sections as a JSON object:
+The title, date, and preacher are handled separately, so you write ONLY the scripture reference and these four sections as a JSON object:
 {
+  "scripture": string,          // the main passage preached, e.g. "Titus 2:1-15" (see SCRIPTURE below)
   "recap": string[],            // exactly 4 paragraphs (one string per paragraph)
   "one_thing": string,          // the single biggest takeaway, in one sentence
   "discussion_questions": {     // exactly 2 questions per category
@@ -18,6 +19,8 @@ The title, date, scripture, and preacher are handled separately, so you write ON
   },
   "next_steps": string[]        // exactly 3 concrete action items
 }
+
+SCRIPTURE: The primary passage the preacher teaches from, as a single standard reference in the form "Book chapter:verse-verse" (e.g. "Luke 2:1-20", "Song of Songs 4:12-5:1", "Titus 2"). Take it from what the preacher actually says or reads aloud; preachers usually announce it near the start. If the sermon context below already gives a Scripture, use that exactly. If several passages are read, give the main one. If you cannot tell, use an empty string. Never guess, and do not add commentary or a translation name.
 
 RECAP — EXACTLY 4 paragraphs, 350-450 words TOTAL. Never write a 5th paragraph and never exceed 450 words:
 - A warm, clear narrative, like explaining the sermon to a friend who missed Sunday. Not bullets, not an outline.
@@ -53,6 +56,10 @@ Base everything strictly on the sermon provided. Do NOT invent quotes, scripture
 const TRANSCRIBE_PROMPT = `Transcribe this sermon audio verbatim into clean, readable paragraphs.
 Include all spoken content. Do not summarize, add headings, timestamps, speaker labels, or commentary.
 Output plain text only.`;
+
+// What the model returns: the guide sections plus the passage it picked. The
+// scripture rides along separately from GuideContent (it's meta, not content).
+export type GeneratedGuide = GuideContent & { scripture?: string };
 
 function client(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -107,7 +114,7 @@ export async function generateGuideFromTranscript(
   transcript: string,
   meta: GuideMeta,
   revision?: { notes: string; previous: GuideContent },
-): Promise<GuideContent> {
+): Promise<GeneratedGuide> {
   const ai = client();
   const base = `${guidePrompt(meta)}\n\n--- TRANSCRIPT ---\n${transcript}`;
   const prompt = revision
@@ -132,7 +139,7 @@ export async function generateGuideFromTranscript(
 // ---- Phase 2: audio -> { guide, transcript } ----
 
 export type AudioResult = {
-  guide: GuideContent;
+  guide: GeneratedGuide;
   transcript: string | null;
   transcriptFailed: boolean;
 };
@@ -192,7 +199,7 @@ async function streamGuide(
   ai: GoogleGenAI,
   audioPart: Part,
   meta: GuideMeta,
-): Promise<GuideContent> {
+): Promise<GeneratedGuide> {
   return withRetry(async () => {
     const stream = await ai.models.generateContentStream({
       model: MODEL,
@@ -247,7 +254,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
 
 // ---- Shared JSON parsing ----
 
-function parseGuide(raw: string): GuideContent {
+function parseGuide(raw: string): GeneratedGuide {
   const obj = extractJsonObject(raw);
   if (!obj) throw new Error("Gemini did not return valid JSON");
 
@@ -261,7 +268,15 @@ function parseGuide(raw: string): GuideContent {
     if (list.length) discussion_questions[k] = list;
   }
 
-  const guide: GuideContent = {
+  // A reference is short ("Song of Songs 4:12-5:1"). Anything long is the model
+  // rambling, not a passage, so drop it rather than prefill the form with prose.
+  const scripture =
+    typeof obj.scripture === "string" && obj.scripture.trim().length <= 60
+      ? obj.scripture.trim()
+      : "";
+
+  const guide: GeneratedGuide = {
+    scripture: scripture || undefined,
     recap: asStringList(obj.recap),
     one_thing: typeof obj.one_thing === "string" ? obj.one_thing.trim() : "",
     discussion_questions,

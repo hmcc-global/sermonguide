@@ -5,7 +5,15 @@ import { upload } from "@vercel/blob/client";
 import { Field, AutoTextarea } from "@/components/fields";
 import { MetaFields } from "@/components/MetaFields";
 import { GuidePreview } from "@/components/GuidePreview";
-import { lines, paras, type Draft, type Meta } from "@/lib/studio";
+import {
+  cleanPart,
+  defaultMeta,
+  lines,
+  paras,
+  tidyMeta,
+  type Draft,
+  type Meta,
+} from "@/lib/studio";
 import {
   parseTranscript,
   wordCount,
@@ -196,7 +204,8 @@ function isDraftEmpty(d: Draft): boolean {
 
 function draftToMarkdown(meta: Meta, draft: Draft): string {
   const series = meta.series.trim() || "Series";
-  const titleLine = meta.part.trim() ? `# ${series} — ${meta.part.trim()}` : `# ${series}`;
+  const part = cleanPart(meta.part);
+  const titleLine = part ? `# ${series} — ${part}` : `# ${series}`;
   const out: string[] = [titleLine];
   if (meta.date.trim()) out.push(`Date: ${meta.date.trim()}`);
   if (meta.scripture.trim()) out.push(`Scripture: ${meta.scripture.trim()}`);
@@ -519,13 +528,10 @@ export default function Page() {
   const [passcode, setPasscode] = useState("");
   const [mode, setMode] = useState<Mode>("paste");
   const [stage, setStage] = useState<Stage>("input");
-  const [meta, setMeta] = useState<Meta>({
-    series: "",
-    part: "",
-    date: "",
-    preacher: "",
-    scripture: "",
-  });
+  const [meta, setMeta] = useState<Meta>(defaultMeta);
+  // Set when the AI picked the scripture, so the form can say so (and the editor
+  // knows to double-check it). Cleared once they edit the field themselves.
+  const [scriptureFromAI, setScriptureFromAI] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [transcript, setTranscript] = useState("");
   const [transcriptFailed, setTranscriptFailed] = useState(false);
@@ -638,10 +644,12 @@ export default function Page() {
       setTranscript(typeof data.vtt === "string" ? parseTranscript(data.vtt) : "");
       setTranscriptSource(null);
       const m = (data.meta ?? {}) as { date?: string; preacher?: string };
+      // The form now starts with today's date and a default preacher, so what
+      // the inbox item carries has to win over those defaults.
       setMeta((prev) => ({
         ...prev,
-        date: prev.date || m.date || "",
-        preacher: prev.preacher || m.preacher || "",
+        date: m.date || prev.date,
+        preacher: m.preacher || prev.preacher,
       }));
       setInboxId(row.id);
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -706,13 +714,17 @@ export default function Page() {
     }
   }
 
-  const setMetaField = (k: keyof Meta, v: string) => setMeta((m) => ({ ...m, [k]: v }));
+  const setMetaField = (k: keyof Meta, v: string) => {
+    if (k === "scripture") setScriptureFromAI(false);
+    setMeta((m) => ({ ...m, [k]: v }));
+  };
   const setDraftField = (k: keyof Draft, v: string) => setDraft((d) => ({ ...d, [k]: v }));
 
-  function metaOut(m: Meta = meta) {
+  function metaOut(raw: Meta = meta) {
+    const m = tidyMeta(raw);
     return {
       series: m.series.trim(),
-      part: m.part.trim() || undefined,
+      part: m.part || undefined,
       date: m.date || undefined,
       preacher: m.preacher.trim() || undefined,
       scripture_title: m.scripture.trim() || undefined,
@@ -880,6 +892,12 @@ export default function Page() {
       if (!res.ok) throw new Error(data.error || "Generation failed");
 
       fillDraft(data.guide || {});
+      // Fill the scripture from the sermon, but never over one the editor typed.
+      const aiScripture = typeof data.guide?.scripture === "string" ? data.guide.scripture.trim() : "";
+      if (aiScripture && !meta.scripture.trim()) {
+        setMeta((m) => (m.scripture.trim() ? m : { ...m, scripture: aiScripture }));
+        setScriptureFromAI(true);
+      }
       if (typeof data.transcript === "string") setTranscript(data.transcript);
       setTranscriptFailed(Boolean(data.transcriptFailed));
       setStage("review");
@@ -1027,7 +1045,8 @@ export default function Page() {
 
   function reset() {
     setStage("input");
-    setMeta({ series: "", part: "", date: "", preacher: "", scripture: "" });
+    setMeta(defaultMeta());
+    setScriptureFromAI(false);
     setFile(null);
     setTranscript("");
     setTranscriptFailed(false);
@@ -1044,10 +1063,10 @@ export default function Page() {
     setMarkdownError(null);
   }
 
-  const slug = meta.series.trim() ? slugify(`${meta.series} ${meta.part}`.trim()) : "";
+  const slug = meta.series.trim() ? slugify(`${meta.series} ${cleanPart(meta.part)}`.trim()) : "";
   const activeSlug =
     active && active.meta.series.trim()
-      ? slugify(`${active.meta.series} ${active.meta.part}`.trim())
+      ? slugify(`${active.meta.series} ${cleanPart(active.meta.part)}`.trim())
       : "";
 
   if (!authed) {
@@ -1175,7 +1194,11 @@ export default function Page() {
               </button>
             </div>
 
-            <MetaFields meta={meta} onChange={setMetaField} />
+            <MetaFields
+                  meta={meta}
+                  onChange={setMetaField}
+                  scriptureNote={scriptureFromAI ? "picked from the sermon, please check" : undefined}
+                />
             {slug && (
               <p className="muted">
                 Will publish as <code>content/{slug}.yaml</code>
@@ -1391,7 +1414,11 @@ export default function Page() {
             <>
               <div className="card">
                 <label style={{ marginBottom: 12 }}>Details</label>
-                <MetaFields meta={meta} onChange={setMetaField} />
+                <MetaFields
+                  meta={meta}
+                  onChange={setMetaField}
+                  scriptureNote={scriptureFromAI ? "picked from the sermon, please check" : undefined}
+                />
               </div>
 
               <div className="card">
