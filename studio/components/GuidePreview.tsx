@@ -1,6 +1,6 @@
 "use client";
 
-import { lines, paras, type Draft, type Meta } from "@/lib/studio";
+import { cleanPart, lines, paras, type Draft, type Meta } from "@/lib/studio";
 
 function fmtDate(iso: string): string {
   if (!iso) return "";
@@ -22,7 +22,7 @@ export function GuidePreview({ meta, draft }: { meta: Meta; draft: Draft }) {
   return (
     <div className="preview">
       <p className="series">{meta.series || "Series"}</p>
-      {meta.part && <p className="part">{meta.part}</p>}
+      {cleanPart(meta.part) && <p className="part">{cleanPart(meta.part)}</p>}
       {byline && <p className="muted">{byline}</p>}
       {meta.scripture && <p className="muted">{meta.scripture}</p>}
 
