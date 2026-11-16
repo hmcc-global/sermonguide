@@ -62,7 +62,7 @@ function Choice({
       {showOther && (
         <input
           type="text"
-          style={{ marginTop: 8 }}
+          className="other-input"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={otherPlaceholder}
